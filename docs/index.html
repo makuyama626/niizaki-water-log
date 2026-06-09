@@ -190,12 +190,12 @@
           <div class="card-sub" id="val-time">--</div>
         </div>
         <div class="card">
-          <div class="card-label">最新雨量（10分）</div>
+          <div class="card-label">時間雨量（積算）</div>
           <div>
-            <span class="card-value" id="val-rain">--</span>
-            <span class="card-unit">mm</span>
+            <span class="card-value" id="val-rain-hourly">--</span>
+            <span class="card-unit">mm/h</span>
           </div>
-          <div class="card-sub" id="val-rain-station">--</div>
+          <div class="card-sub" id="val-rain-station">南郷山 過去60分合計</div>
         </div>
       </div>
 
@@ -216,7 +216,7 @@
 
       <!-- 雨量グラフ -->
       <div class="chart-card">
-        <div class="chart-title">雨量（10分値 mm）</div>
+        <div class="chart-title">雨量（棒: 10分値 mm ／ 線: 時間雨量 mm/h）</div>
         <div class="chart-wrap">
           <canvas id="rainChart"></canvas>
         </div>
@@ -224,7 +224,7 @@
 
       <!-- 雨量観測所 -->
       <div class="card full" id="rain-stations">
-        <div class="card-label">観測所別 最新10分雨量</div>
+        <div class="card-label">観測所別 時間雨量（過去60分積算）</div>
         <div id="rain-station-list"></div>
       </div>
 
@@ -240,6 +240,18 @@
     let allData = [];
     let currentPeriodHours = 24;
     let levelChart, rainChart;
+
+    // 方法B: 各時刻について過去60分（6コマ）の合計を計算
+    // 欠測（空白）は0として扱うが、有効コマ数が0の場合はnullを返す
+    function calcHourlyRain(data, col) {
+      return data.map((row, i) => {
+        const start = Math.max(0, i - 5);
+        const window = data.slice(start, i + 1);
+        const valid = window.filter(r => r[col] !== '');
+        if (valid.length === 0) return null;
+        return valid.reduce((sum, r) => sum + parseFloat(r[col]), 0);
+      });
+    }
 
     function parseCSV(text) {
       const lines = text.trim().split('\n');
@@ -281,35 +293,33 @@
         document.getElementById('val-time').textContent = formatTime(latest.timestamp);
       }
 
-      // 最新の雨量（南郷山優先）
+      // 時間雨量（南郷山・方法B）をカードに表示
       const rainCols = ['南郷山_10分mm', '白銀山_10分mm', '浅間山_10分mm'];
       const stations = ['南郷山', '白銀山', '浅間山'];
-      let latestRain = '--', latestStation = '--';
 
-      for (let i = 0; i < rainCols.length; i++) {
-        const withRain = data.filter(r => r[rainCols[i]] !== '');
-        if (withRain.length > 0) {
-          const val = parseFloat(withRain[withRain.length-1][rainCols[i]]);
-          latestRain = val.toFixed(1);
-          latestStation = stations[i];
-          break;
-        }
+      const hourlyNangozan = calcHourlyRain(data, '南郷山_10分mm');
+      const latestHourly = hourlyNangozan[hourlyNangozan.length - 1];
+      const hourlyEl = document.getElementById('val-rain-hourly');
+      if (latestHourly !== null) {
+        hourlyEl.textContent = latestHourly.toFixed(1);
+        hourlyEl.style.color = latestHourly >= 30 ? '#f87171' : latestHourly >= 20 ? '#fbbf24' : '#34d399';
+      } else {
+        hourlyEl.textContent = '--';
+        hourlyEl.style.color = '';
       }
-      document.getElementById('val-rain').textContent = latestRain;
-      document.getElementById('val-rain-station').textContent = latestStation;
 
-      // 観測所別リスト
+      // 観測所別：時間雨量リスト
       const listEl = document.getElementById('rain-station-list');
       listEl.innerHTML = '';
       rainCols.forEach((col, i) => {
-        const withRain = data.filter(r => r[col] !== '');
-        if (withRain.length > 0) {
-          const val = parseFloat(withRain[withRain.length-1][col]);
-          const row = document.createElement('div');
-          row.className = 'rain-row';
-          row.innerHTML = `<span class="rain-station">${stations[i]}</span><span class="rain-value" style="color:${val>0?'#60a5fa':'#94a3b8'}">${val.toFixed(1)} mm</span>`;
-          listEl.appendChild(row);
-        }
+        const hourly = calcHourlyRain(data, col);
+        const val = hourly[hourly.length - 1];
+        if (val === null) return;
+        const row = document.createElement('div');
+        row.className = 'rain-row';
+        const color = val >= 30 ? '#f87171' : val >= 20 ? '#fbbf24' : val > 0 ? '#60a5fa' : '#94a3b8';
+        row.innerHTML = `<span class="rain-station">${stations[i]}</span><span class="rain-value" style="color:${color}">${val.toFixed(1)} mm/h</span>`;
+        listEl.appendChild(row);
       });
     }
 
@@ -318,11 +328,16 @@
       const labels = filtered.map(r => formatTime(r.timestamp));
       const levels = filtered.map(r => r.level_m !== '' ? parseFloat(r.level_m) : null);
 
-      // 雨量（南郷山）
+      // 10分雨量（南郷山）
       const rainVals = filtered.map(r => {
         const v = r['南郷山_10分mm'];
         return v !== '' ? parseFloat(v) : 0;
       });
+
+      // 時間雨量（積算）— filteredのインデックスでなくallData上で計算してからfilter
+      const allHourly = calcHourlyRain(allData, '南郷山_10分mm');
+      const hourlyMap = new Map(allData.map((r, i) => [r.timestamp, allHourly[i]]));
+      const hourlyVals = filtered.map(r => hourlyMap.get(r.timestamp) ?? null);
 
       const chartDefaults = {
         responsive: true,
@@ -365,13 +380,57 @@
         type: 'bar',
         data: {
           labels,
-          datasets: [{
-            data: rainVals,
-            backgroundColor: 'rgba(96,165,250,0.7)',
-            borderRadius: 2
-          }]
+          datasets: [
+            {
+              type: 'bar',
+              label: '10分雨量(mm)',
+              data: rainVals,
+              backgroundColor: 'rgba(96,165,250,0.5)',
+              borderRadius: 2,
+              yAxisID: 'y'
+            },
+            {
+              type: 'line',
+              label: '時間雨量(mm/h)',
+              data: hourlyVals,
+              borderColor: '#f59e0b',
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              pointRadius: 0,
+              tension: 0.3,
+              spanGaps: true,
+              yAxisID: 'y2'
+            }
+          ]
         },
-        options: { ...chartDefaults }
+        options: {
+          ...chartDefaults,
+          plugins: {
+            legend: {
+              display: true,
+              labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 14 }
+            },
+            tooltip: { mode: 'index', intersect: false }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#64748b', maxTicksLimit: 6, font: { size: 10 } },
+              grid: { color: '#1e293b' }
+            },
+            y: {
+              position: 'left',
+              ticks: { color: '#60a5fa', font: { size: 10 } },
+              grid: { color: '#1e293b' },
+              title: { display: true, text: 'mm', color: '#60a5fa', font: { size: 10 } }
+            },
+            y2: {
+              position: 'right',
+              ticks: { color: '#f59e0b', font: { size: 10 } },
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: 'mm/h', color: '#f59e0b', font: { size: 10 } }
+            }
+          }
+        }
       });
     }
 

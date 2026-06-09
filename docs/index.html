@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="新崎川水位">
+  <title>新崎川 水位・雨量モニター</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    header {
+      background: linear-gradient(135deg, #1e40af, #0891b2);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 18px; font-weight: 700; }
+    #last-update { font-size: 11px; opacity: 0.75; margin-top: 2px; }
+    #refresh-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #refresh-btn:active { background: rgba(255,255,255,0.3); }
+
+    .container { padding: 16px; max-width: 600px; margin: 0 auto; }
+
+    /* ステータスカード */
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid #334155;
+    }
+    .card.full { grid-column: 1 / -1; }
+    .card-label {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+    .card-value {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .card-unit { font-size: 14px; color: #94a3b8; margin-left: 4px; }
+    .card-trend { font-size: 20px; margin-left: 6px; }
+    .card-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+    .status-ok    { color: #34d399; }
+    .status-warn  { color: #fbbf24; }
+    .status-alert { color: #f87171; }
+
+    /* チャート */
+    .chart-card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid #334155;
+    }
+    .chart-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+    .chart-wrap { position: relative; height: 160px; }
+
+    /* 雨量テーブル */
+    .rain-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #1e293b;
+      font-size: 14px;
+    }
+    .rain-row:last-child { border-bottom: none; }
+    .rain-station { color: #94a3b8; }
+    .rain-value { font-weight: 600; }
+
+    /* ローディング */
+    #loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: #64748b;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #error-msg {
+      background: #7f1d1d;
+      color: #fca5a5;
+      padding: 12px 16px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      display: none;
+    }
+
+    /* 期間セレクタ */
+    .period-selector {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .period-btn {
+      flex: 1;
+      padding: 7px;
+      background: #334155;
+      border: none;
+      color: #94a3b8;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .period-btn.active {
+      background: #3b82f6;
+      color: white;
+      font-weight: 600;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 11px;
+      color: #334155;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>🌊 新崎川 水位モニター</h1>
+      <div id="last-update">読み込み中...</div>
+    </div>
+    <button id="refresh-btn" onclick="loadData()">↻ 更新</button>
+  </header>
+
+  <div class="container">
+    <div id="error-msg"></div>
+    <div id="loading">
+      <div class="spinner"></div>
+      データを取得中...
+    </div>
+    <div id="main-content" style="display:none">
+
+      <!-- ステータスカード -->
+      <div class="status-grid">
+        <div class="card">
+          <div class="card-label">現在水位</div>
+          <div>
+            <span class="card-value" id="val-level">--</span>
+            <span class="card-unit">m</span>
+            <span class="card-trend" id="val-trend"></span>
+          </div>
+          <div class="card-sub" id="val-time">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">最新雨量（10分）</div>
+          <div>
+            <span class="card-value" id="val-rain">--</span>
+            <span class="card-unit">mm</span>
+          </div>
+          <div class="card-sub" id="val-rain-station">--</div>
+        </div>
+      </div>
+
+      <!-- チャート期間 -->
+      <div class="period-selector">
+        <button class="period-btn active" data-hours="24" onclick="setPeriod(this)">24時間</button>
+        <button class="period-btn" data-hours="72" onclick="setPeriod(this)">3日間</button>
+        <button class="period-btn" data-hours="168" onclick="setPeriod(this)">1週間</button>
+      </div>
+
+      <!-- 水位グラフ -->
+      <div class="chart-card">
+        <div class="chart-title">水位推移 (m)</div>
+        <div class="chart-wrap">
+          <canvas id="levelChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 雨量グラフ -->
+      <div class="chart-card">
+        <div class="chart-title">雨量（10分値 mm）</div>
+        <div class="chart-wrap">
+          <canvas id="rainChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 雨量観測所 -->
+      <div class="card full" id="rain-stations">
+        <div class="card-label">観測所別 最新10分雨量</div>
+        <div id="rain-station-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>データ出典: 神奈川県水位・雨量情報 / 自動更新: 毎時0分</footer>
+
+  <script>
+    // GitHub Pages から CSV を取得（同一リポジトリの data/ フォルダ）
+    const CSV_URL = './data/combined_10min.csv';
+
+    let allData = [];
+    let currentPeriodHours = 24;
+    let levelChart, rainChart;
+
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      const headers = lines[0].replace(/^﻿/, '').split(',');
+      return lines.slice(1).map(line => {
+        const vals = line.split(',');
+        const obj = {};
+        headers.forEach((h, i) => obj[h.trim()] = vals[i]?.trim() ?? '');
+        return obj;
+      }).filter(r => r.timestamp);
+    }
+
+    function formatTime(isoStr) {
+      const d = new Date(isoStr);
+      return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+
+    function getStatusColor(level) {
+      if (level >= 1.5) return '#f87171';  // 警戒
+      if (level >= 0.8) return '#fbbf24';  // 注意
+      return '#34d399';                     // 安全
+    }
+
+    function filterByHours(data, hours) {
+      const cutoff = Date.now() - hours * 3600 * 1000;
+      return data.filter(r => new Date(r.timestamp).getTime() >= cutoff);
+    }
+
+    function updateCards(data) {
+      // 最新の水位
+      const withLevel = data.filter(r => r.level_m !== '');
+      if (withLevel.length > 0) {
+        const latest = withLevel[withLevel.length - 1];
+        const level = parseFloat(latest.level_m);
+        const el = document.getElementById('val-level');
+        el.textContent = level.toFixed(2);
+        el.className = 'card-value';
+        el.style.color = getStatusColor(level);
+        document.getElementById('val-time').textContent = formatTime(latest.timestamp);
+      }
+
+      // 最新の雨量（南郷山優先）
+      const rainCols = ['南郷山_10分mm', '白銀山_10分mm', '浅間山_10分mm'];
+      const stations = ['南郷山', '白銀山', '浅間山'];
+      let latestRain = '--', latestStation = '--';
+
+      for (let i = 0; i < rainCols.length; i++) {
+        const withRain = data.filter(r => r[rainCols[i]] !== '');
+        if (withRain.length > 0) {
+          const val = parseFloat(withRain[withRain.length-1][rainCols[i]]);
+          latestRain = val.toFixed(1);
+          latestStation = stations[i];
+          break;
+        }
+      }
+      document.getElementById('val-rain').textContent = latestRain;
+      document.getElementById('val-rain-station').textContent = latestStation;
+
+      // 観測所別リスト
+      const listEl = document.getElementById('rain-station-list');
+      listEl.innerHTML = '';
+      rainCols.forEach((col, i) => {
+        const withRain = data.filter(r => r[col] !== '');
+        if (withRain.length > 0) {
+          const val = parseFloat(withRain[withRain.length-1][col]);
+          const row = document.createElement('div');
+          row.className = 'rain-row';
+          row.innerHTML = `<span class="rain-station">${stations[i]}</span><span class="rain-value" style="color:${val>0?'#60a5fa':'#94a3b8'}">${val.toFixed(1)} mm</span>`;
+          listEl.appendChild(row);
+        }
+      });
+    }
+
+    function updateCharts(data) {
+      const filtered = filterByHours(data, currentPeriodHours);
+      const labels = filtered.map(r => formatTime(r.timestamp));
+      const levels = filtered.map(r => r.level_m !== '' ? parseFloat(r.level_m) : null);
+
+      // 雨量（南郷山）
+      const rainVals = filtered.map(r => {
+        const v = r['南郷山_10分mm'];
+        return v !== '' ? parseFloat(v) : 0;
+      });
+
+      const chartDefaults = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+        scales: {
+          x: {
+            ticks: { color: '#64748b', maxTicksLimit: 6, font: { size: 10 } },
+            grid: { color: '#1e293b' }
+          },
+          y: {
+            ticks: { color: '#64748b', font: { size: 10 } },
+            grid: { color: '#1e293b' }
+          }
+        }
+      };
+
+      if (levelChart) levelChart.destroy();
+      levelChart = new Chart(document.getElementById('levelChart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            data: levels,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 2,
+            spanGaps: true
+          }]
+        },
+        options: { ...chartDefaults }
+      });
+
+      if (rainChart) rainChart.destroy();
+      rainChart = new Chart(document.getElementById('rainChart'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            data: rainVals,
+            backgroundColor: 'rgba(96,165,250,0.7)',
+            borderRadius: 2
+          }]
+        },
+        options: { ...chartDefaults }
+      });
+    }
+
+    function setPeriod(btn) {
+      document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentPeriodHours = parseInt(btn.dataset.hours);
+      updateCharts(allData);
+    }
+
+    async function loadData() {
+      document.getElementById('error-msg').style.display = 'none';
+      document.getElementById('refresh-btn').textContent = '読込中...';
+      try {
+        const res = await fetch(CSV_URL + '?t=' + Date.now());
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        allData = parseCSV(text);
+        if (allData.length === 0) throw new Error('データが空です');
+
+        const latest = allData[allData.length - 1];
+        document.getElementById('last-update').textContent =
+          `最終取得: ${formatTime(latest.timestamp)}`;
+
+        updateCards(allData);
+        updateCharts(allData);
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+      } catch(e) {
+        const errEl = document.getElementById('error-msg');
+        errEl.textContent = `データ取得エラー: ${e.message}`;
+        errEl.style.display = 'block';
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+      }
+      document.getElementById('refresh-btn').textContent = '↻ 更新';
+    }
+
+    // 30分ごとに自動更新
+    loadData();
+    setInterval(loadData, 30 * 60 * 1000);
+  </script>
+</body>
+</html>

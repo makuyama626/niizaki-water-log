@@ -159,6 +159,43 @@
       font-size: 11px;
       color: #334155;
     }
+
+    /* 天気予報 */
+    .forecast-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .forecast-day {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 10px 6px;
+      text-align: center;
+    }
+    .forecast-date { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+    .forecast-icon { font-size: 26px; line-height: 1; margin-bottom: 4px; }
+    .forecast-desc { font-size: 10px; color: #94a3b8; margin-bottom: 6px; line-height: 1.3; }
+    .forecast-temp { font-size: 12px; }
+    .forecast-temp .hi { color: #f87171; font-weight: 600; }
+    .forecast-temp .lo { color: #60a5fa; font-weight: 600; }
+    .forecast-pop { font-size: 11px; color: #60a5fa; margin-top: 4px; }
+
+    /* レーダー */
+    .radar-wrap {
+      position: relative;
+      width: 100%;
+      padding-top: 75%;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .radar-wrap iframe {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      border: none;
+    }
   </style>
 </head>
 <body>
@@ -228,10 +265,31 @@
         <div id="rain-station-list"></div>
       </div>
 
+      <!-- 天気予報 -->
+      <div class="chart-card">
+        <div class="chart-title">☀️ 湯河原の天気予報（神奈川県西部）</div>
+        <div id="forecast-content">
+          <div style="color:#64748b;font-size:13px">読み込み中...</div>
+        </div>
+      </div>
+
+      <!-- 雨雲レーダー -->
+      <div class="chart-card">
+        <div class="chart-title">🌧️ 雨雲レーダー（湯河原周辺）</div>
+        <div class="radar-wrap">
+          <iframe
+            src="https://embed.windy.com/embed2.html?lat=35.15&lon=139.10&detailLat=35.15&detailLon=139.10&zoom=10&level=surface&overlay=rain&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1"
+            allowfullscreen
+            loading="lazy">
+          </iframe>
+        </div>
+        <div style="font-size:10px;color:#475569;margin-top:6px;text-align:right">提供: Windy.com</div>
+      </div>
+
     </div>
   </div>
 
-  <footer>データ出典: 神奈川県水位・雨量情報 / 自動更新: 毎時0分</footer>
+  <footer>データ出典: 神奈川県水位・雨量情報・気象庁・Windy / 自動更新: 毎時0分</footer>
 
   <script>
     // GitHub Pages から CSV を取得（同一リポジトリの data/ フォルダ）
@@ -470,9 +528,77 @@
       document.getElementById('refresh-btn').textContent = '↻ 更新';
     }
 
+    // 天気予報（気象庁API・神奈川県 / 西部エリア）
+    const JMA_URL = 'https://www.jma.go.jp/bosai/forecast/data/forecast/140000.json';
+
+    const WEATHER_ICON = {
+      '晴れ': '☀️', '晴': '☀️',
+      '曇り': '☁️', '曇': '☁️',
+      '雨': '🌧️', '小雨': '🌦️',
+      '雪': '❄️', '雷': '⛈️',
+      '晴れ時々曇り': '🌤️', '晴時々曇': '🌤️',
+      '晴れ時々雨': '🌦️', '晴時々雨': '🌦️',
+      '曇り時々雨': '🌧️', '曇時々雨': '🌧️',
+      '曇り後雨': '🌧️', '曇後雨': '🌧️',
+      '晴れ後曇り': '🌤️', '晴後曇': '🌤️',
+    };
+
+    function weatherIcon(desc) {
+      for (const [key, icon] of Object.entries(WEATHER_ICON)) {
+        if (desc.includes(key)) return icon;
+      }
+      return '🌡️';
+    }
+
+    async function loadForecast() {
+      try {
+        const res = await fetch(JMA_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        // 神奈川西部 (index 1) を探す
+        const series = data[0].timeSeries;
+        const areaSeries = series[0];
+        const areaIdx = areaSeries.areas.findIndex(a => a.area.name.includes('西部'));
+        const idx = areaIdx >= 0 ? areaIdx : 0;
+
+        const dates   = series[0].timeDefines;
+        const weathers = series[0].areas[idx].weathers;
+        const pops    = series[1].areas[idx]?.pops ?? [];
+        const tempsHi = series[2]?.areas[idx]?.tempsMax ?? [];
+        const tempsLo = series[2]?.areas[idx]?.tempsMin ?? [];
+
+        const days = Math.min(3, dates.length);
+        let html = '<div class="forecast-grid">';
+        for (let i = 0; i < days; i++) {
+          const d = new Date(dates[i]);
+          const label = i === 0 ? '今日' : i === 1 ? '明日' : `${d.getMonth()+1}/${d.getDate()}`;
+          const desc = weathers[i] ?? '';
+          const pop = pops[i*2] ?? pops[i] ?? '--';
+          const hi = tempsHi[i] ?? '--';
+          const lo = tempsLo[i] ?? '--';
+          html += `
+            <div class="forecast-day">
+              <div class="forecast-date">${label}</div>
+              <div class="forecast-icon">${weatherIcon(desc)}</div>
+              <div class="forecast-desc">${desc.replace(/　/g,' ').substring(0,18)}</div>
+              <div class="forecast-temp"><span class="hi">${hi}°</span> / <span class="lo">${lo}°</span></div>
+              <div class="forecast-pop">☂ ${pop}%</div>
+            </div>`;
+        }
+        html += '</div>';
+        document.getElementById('forecast-content').innerHTML = html;
+      } catch(e) {
+        document.getElementById('forecast-content').innerHTML =
+          `<div style="color:#64748b;font-size:12px">予報取得エラー: ${e.message}</div>`;
+      }
+    }
+
     // 30分ごとに自動更新
     loadData();
+    loadForecast();
     setInterval(loadData, 30 * 60 * 1000);
+    setInterval(loadForecast, 60 * 60 * 1000);
   </script>
 </body>
 </html>

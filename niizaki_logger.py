@@ -47,6 +47,26 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 WATER_CSV = os.path.join(DATA_DIR, "niizaki_waterlevel.csv")
 RAIN_CSV = os.path.join(DATA_DIR, "rainfall.csv")
 COMBINED_CSV = os.path.join(DATA_DIR, "combined_10min.csv")
+EVENT_CSV = os.path.join(DATA_DIR, "event_log.csv")
+
+# イベント検出パラメータ
+EVENT_START_THRESHOLD = 0.15   # この水位を超えたらイベント開始(m)
+NORMAL_THRESHOLD = 0.10        # この水位以下が3コマ連続で「回復」と判定(m)
+NORMAL_CONSECUTIVE = 3         # 回復判定に必要な連続コマ数
+
+EVENT_FIELDS = [
+    "event_id",          # YYYYMMDD_HHMM (イベント開始時刻)
+    "event_start",       # イベント開始時刻(ISO)
+    "peak_level_m",      # ピーク水位(m)
+    "peak_time",         # ピーク時刻(ISO)
+    "recovery_time",     # 回復時刻(ISO) ※未回復は空欄
+    "hours_to_recover",  # ピーク→回復の時間数 ※未回復は空欄
+    "total_rain_mm",     # イベント期間の南郷山総雨量(mm)
+    "antecedent_24h_mm", # イベント開始前24h南郷山雨量(mm)
+    "antecedent_72h_mm", # イベント開始前72h南郷山雨量(mm)
+    "month",             # 月（季節把握用）
+    "status",            # "closed" or "in_progress"
+]
 
 WATER_FIELDS = ["timestamp", "level_m", "trend", "status", "fetched_at"]
 RAIN_FIELDS = ["timestamp", "station", "rain_10min_mm", "rain_cum_mm", "status", "fetched_at"]
@@ -240,6 +260,138 @@ def build_combined(water_rows, rain_rows):
     return fields
 
 
+def update_event_log():
+    """combined_10min.csv を読み込み、イベントを検出して event_log.csv を更新する。"""
+    if not os.path.exists(COMBINED_CSV):
+        return
+
+    # combined を時系列順に読む
+    rows = []
+    with open(COMBINED_CSV, "r", encoding="utf-8-sig", newline="") as f:
+        for r in csv.DictReader(f):
+            rows.append(r)
+    rows.sort(key=lambda r: r["timestamp"])
+
+    def get_level(r):
+        try:
+            return float(r["level_m"]) if r["level_m"] else None
+        except ValueError:
+            return None
+
+    def get_rain(r):
+        try:
+            return float(r["南郷山_10分mm"]) if r["南郷山_10分mm"] else 0.0
+        except ValueError:
+            return 0.0
+
+    def rain_sum_before(ts_iso, hours):
+        cutoff = datetime.fromisoformat(ts_iso) - timedelta(hours=hours)
+        total = 0.0
+        for r in rows:
+            t = datetime.fromisoformat(r["timestamp"])
+            if cutoff <= t < datetime.fromisoformat(ts_iso):
+                total += get_rain(r)
+        return round(total, 1)
+
+    # 既存イベントログを読む
+    existing = {}
+    if os.path.exists(EVENT_CSV):
+        with open(EVENT_CSV, "r", encoding="utf-8-sig", newline="") as f:
+            for r in csv.DictReader(f):
+                existing[r["event_id"]] = r
+
+    # イベント検出ループ
+    in_event = False
+    event = {}
+    normal_streak = 0
+
+    for i, r in enumerate(rows):
+        level = get_level(r)
+        if level is None:
+            continue
+
+        if not in_event:
+            if level > EVENT_START_THRESHOLD:
+                in_event = True
+                normal_streak = 0
+                event = {
+                    "event_start": r["timestamp"],
+                    "peak_level_m": level,
+                    "peak_time": r["timestamp"],
+                    "event_rain": get_rain(r),
+                    "status": "in_progress",
+                }
+        else:
+            # ピーク更新
+            if level > event["peak_level_m"]:
+                event["peak_level_m"] = level
+                event["peak_time"] = r["timestamp"]
+            event["event_rain"] = event.get("event_rain", 0) + get_rain(r)
+
+            # 回復判定
+            if level <= NORMAL_THRESHOLD:
+                normal_streak += 1
+            else:
+                normal_streak = 0
+
+            if normal_streak >= NORMAL_CONSECUTIVE:
+                # 回復確定 → イベント確定
+                peak_dt = datetime.fromisoformat(event["peak_time"])
+                rec_dt = datetime.fromisoformat(r["timestamp"])
+                hours_rec = round((rec_dt - peak_dt).total_seconds() / 3600, 1)
+                event_id = datetime.fromisoformat(event["event_start"]).strftime("%Y%m%d_%H%M")
+                rec = {
+                    "event_id": event_id,
+                    "event_start": event["event_start"],
+                    "peak_level_m": f"{event['peak_level_m']:.2f}",
+                    "peak_time": event["peak_time"],
+                    "recovery_time": r["timestamp"],
+                    "hours_to_recover": str(hours_rec),
+                    "total_rain_mm": str(event.get("event_rain", "")),
+                    "antecedent_24h_mm": str(rain_sum_before(event["event_start"], 24)),
+                    "antecedent_72h_mm": str(rain_sum_before(event["event_start"], 72)),
+                    "month": str(datetime.fromisoformat(event["event_start"]).month),
+                    "status": "closed",
+                }
+                existing[event_id] = rec
+                in_event = False
+                event = {}
+                normal_streak = 0
+
+    # イベント未回復（データ末尾まで水位が高いまま）
+    if in_event and event.get("event_start"):
+        event_id = datetime.fromisoformat(event["event_start"]).strftime("%Y%m%d_%H%M")
+        # すでにclosedなら上書きしない
+        if existing.get(event_id, {}).get("status") != "closed":
+            existing[event_id] = {
+                "event_id": event_id,
+                "event_start": event["event_start"],
+                "peak_level_m": f"{event['peak_level_m']:.2f}",
+                "peak_time": event["peak_time"],
+                "recovery_time": "",
+                "hours_to_recover": "",
+                "total_rain_mm": str(event.get("event_rain", "")),
+                "antecedent_24h_mm": str(rain_sum_before(event["event_start"], 24)),
+                "antecedent_72h_mm": str(rain_sum_before(event["event_start"], 72)),
+                "month": str(datetime.fromisoformat(event["event_start"]).month),
+                "status": "in_progress",
+            }
+
+    if not existing:
+        return
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(EVENT_CSV, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=EVENT_FIELDS)
+        w.writeheader()
+        for rec in sorted(existing.values(), key=lambda r: r["event_id"]):
+            w.writerow({k: rec.get(k, "") for k in EVENT_FIELDS})
+
+    closed = sum(1 for r in existing.values() if r["status"] == "closed")
+    inprog = sum(1 for r in existing.values() if r["status"] == "in_progress")
+    print(f"event_log: {closed}件確定 / {inprog}件進行中")
+
+
 def run():
     import requests
     now = datetime.now(JST)
@@ -265,6 +417,7 @@ def run():
     save_csv(WATER_CSV, WATER_FIELDS, water, lambda r: r["timestamp"])
     save_csv(RAIN_CSV, RAIN_FIELDS, rain, lambda r: (r["timestamp"], r["station"]))
     build_combined(water, rain)
+    update_event_log()
     print(f"[{now.isoformat()}] " + " | ".join(summary))
     print(f"累計 水位{len(water)}行 / 雨量{len(rain)}行")
 

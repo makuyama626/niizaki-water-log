@@ -1,2 +1,3 @@
 ﻿event_id,event_start,peak_level_m,peak_time,recovery_time,hours_to_recover,total_rain_mm,antecedent_24h_mm,antecedent_72h_mm,month,status
 20260620_1020,2026-06-20T10:20:00+09:00,0.19,2026-06-20T10:20:00+09:00,2026-06-20T11:40:00+09:00,1.3,2.0,6.0,29.0,6,closed
+20260620_1630,2026-06-20T16:30:00+09:00,0.16,2026-06-20T16:30:00+09:00,,,1.0,22.0,45.0,6,in_progress

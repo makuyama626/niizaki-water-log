@@ -227,12 +227,17 @@
           <div class="card-sub" id="val-time">--</div>
         </div>
         <div class="card">
-          <div class="card-label">時間雨量（積算）</div>
+          <div class="card-label">24時間雨量</div>
           <div>
-            <span class="card-value" id="val-rain-hourly">--</span>
-            <span class="card-unit">mm/h</span>
+            <span class="card-value" id="val-rain-24h-nan">--</span>
+            <span class="card-unit">mm</span>
           </div>
-          <div class="card-sub" id="val-rain-station">南郷山 過去60分合計</div>
+          <div class="card-sub">南郷山 過去24時間</div>
+          <div style="margin-top:8px">
+            <span class="card-value" style="font-size:22px" id="val-rain-24h-shi">--</span>
+            <span class="card-unit">mm</span>
+          </div>
+          <div class="card-sub">白銀山 過去24時間</div>
         </div>
       </div>
 
@@ -351,20 +356,26 @@
         document.getElementById('val-time').textContent = formatTime(latest.timestamp);
       }
 
-      // 時間雨量（南郷山・方法B）をカードに表示
+      // 24時間雨量（過去24h合計）をカードに表示
       const rainCols = ['南郷山_10分mm', '白銀山_10分mm', '浅間山_10分mm'];
       const stations = ['南郷山', '白銀山', '浅間山'];
 
-      const hourlyNangozan = calcHourlyRain(data, '南郷山_10分mm');
-      const latestHourly = hourlyNangozan[hourlyNangozan.length - 1];
-      const hourlyEl = document.getElementById('val-rain-hourly');
-      if (latestHourly !== null) {
-        hourlyEl.textContent = latestHourly.toFixed(1);
-        hourlyEl.style.color = latestHourly >= 30 ? '#f87171' : latestHourly >= 20 ? '#fbbf24' : '#34d399';
-      } else {
-        hourlyEl.textContent = '--';
-        hourlyEl.style.color = '';
+      function calc24hRain(col) {
+        const cutoff = Date.now() - 24 * 3600 * 1000;
+        return data
+          .filter(r => new Date(r.timestamp).getTime() >= cutoff && r[col] !== '')
+          .reduce((sum, r) => sum + parseFloat(r[col]), 0);
       }
+
+      function setRain24hCard(elId, col) {
+        const val = calc24hRain(col);
+        const el = document.getElementById(elId);
+        el.textContent = val.toFixed(1);
+        el.style.color = val >= 80 ? '#f87171' : val >= 40 ? '#fbbf24' : val > 0 ? '#60a5fa' : '#34d399';
+      }
+
+      setRain24hCard('val-rain-24h-nan', '南郷山_10分mm');
+      setRain24hCard('val-rain-24h-shi', '白銀山_10分mm');
 
       // 観測所別：時間雨量リスト
       const listEl = document.getElementById('rain-station-list');

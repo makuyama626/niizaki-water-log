@@ -2,7 +2,7 @@ name: log-niizaki-water-level
 
 on:
   schedule:
-    - cron: "0 * * * *"      # 毎時0分（UTC）に実行 ＝ 1時間ごと
+    - cron: "*/15 * * * *"   # 15分ごとに実行
   workflow_dispatch:           # 「Run workflow」ボタンで手動実行も可能
 
 permissions:

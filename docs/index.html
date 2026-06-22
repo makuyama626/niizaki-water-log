@@ -227,17 +227,28 @@
           <div class="card-sub" id="val-time">--</div>
         </div>
         <div class="card">
-          <div class="card-label">24時間累積雨量</div>
-          <div>
-            <span class="card-value" id="val-rain-24h-nan">--</span>
-            <span class="card-unit">mm</span>
-            <span class="card-sub" style="display:inline;margin-left:6px">南郷山</span>
-          </div>
-          <div style="margin-top:8px">
-            <span class="card-value" style="font-size:22px" id="val-rain-24h-shi">--</span>
-            <span class="card-unit">mm</span>
-            <span class="card-sub" style="display:inline;margin-left:6px">白銀山</span>
-          </div>
+          <div class="card-label">雨量</div>
+          <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:13px">
+            <thead>
+              <tr>
+                <td style="color:#475569;padding-bottom:4px"></td>
+                <td style="color:#475569;padding-bottom:4px;text-align:right">24h累積</td>
+                <td style="color:#475569;padding-bottom:4px;text-align:right">時間雨量</td>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="color:#94a3b8;padding:3px 0">南郷山</td>
+                <td style="text-align:right;font-weight:700"><span id="val-rain-24h-nan">--</span> <span style="color:#64748b;font-size:11px">mm</span></td>
+                <td style="text-align:right;font-weight:700"><span id="val-rain-1h-nan">--</span> <span style="color:#64748b;font-size:11px">mm/h</span></td>
+              </tr>
+              <tr>
+                <td style="color:#94a3b8;padding:3px 0">白銀山</td>
+                <td style="text-align:right;font-weight:700"><span id="val-rain-24h-shi">--</span> <span style="color:#64748b;font-size:11px">mm</span></td>
+                <td style="text-align:right;font-weight:700"><span id="val-rain-1h-shi">--</span> <span style="color:#64748b;font-size:11px">mm/h</span></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -264,11 +275,6 @@
         </div>
       </div>
 
-      <!-- 雨量観測所 -->
-      <div class="card full" id="rain-stations">
-        <div class="card-label">観測所別 時間雨量（過去60分積算）</div>
-        <div id="rain-station-list"></div>
-      </div>
 
       <!-- 天気予報 -->
       <div class="chart-card">
@@ -377,19 +383,17 @@
       setRain24hCard('val-rain-24h-nan', '南郷山_10分mm');
       setRain24hCard('val-rain-24h-shi', '白銀山_10分mm');
 
-      // 観測所別：時間雨量リスト
-      const listEl = document.getElementById('rain-station-list');
-      listEl.innerHTML = '';
-      rainCols.forEach((col, i) => {
+      // 時間雨量（過去60分積算）を同カードに表示
+      function setRain1hCell(elId, col) {
         const hourly = calcHourlyRain(data, col);
         const val = hourly[hourly.length - 1];
-        if (val === null) return;
-        const row = document.createElement('div');
-        row.className = 'rain-row';
-        const color = val >= 30 ? '#f87171' : val >= 20 ? '#fbbf24' : val > 0 ? '#60a5fa' : '#94a3b8';
-        row.innerHTML = `<span class="rain-station">${stations[i]}</span><span class="rain-value" style="color:${color}">${val.toFixed(1)} mm/h</span>`;
-        listEl.appendChild(row);
-      });
+        const el = document.getElementById(elId);
+        if (val === null) { el.textContent = '--'; return; }
+        el.textContent = val.toFixed(1);
+        el.style.color = val >= 30 ? '#f87171' : val >= 20 ? '#fbbf24' : val > 0 ? '#60a5fa' : '#94a3b8';
+      }
+      setRain1hCell('val-rain-1h-nan', '南郷山_10分mm');
+      setRain1hCell('val-rain-1h-shi', '白銀山_10分mm');
     }
 
     function updateCharts(data) {

@@ -8,8 +8,6 @@
   <meta name="apple-mobile-web-app-title" content="新崎川水位">
   <title>新崎川 水位・雨量モニター</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-  <script>Chart.register(ChartAnnotation);</script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -436,36 +434,32 @@
         type: 'line',
         data: {
           labels,
-          datasets: [{
-            data: levels,
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59,130,246,0.1)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 0,
-            borderWidth: 2,
-            spanGaps: true
-          }]
+          datasets: [
+            {
+              data: levels,
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59,130,246,0.1)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 0,
+              borderWidth: 2,
+              spanGaps: true
+            },
+            {
+              label: '基準 0.10m',
+              data: labels.map(() => 0.10),
+              borderColor: '#ef4444',
+              borderWidth: 1.5,
+              borderDash: [6, 4],
+              pointRadius: 0,
+              fill: false,
+              tension: 0
+            }
+          ]
         },
         options: {
           ...chartDefaults,
-          scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, min: 0 } },
-          plugins: {
-            ...chartDefaults.plugins,
-            annotation: {
-              annotations: {
-                baseline: {
-                  type: 'line',
-                  yMin: 0.10, yMax: 0.10,
-                  borderColor: '#ef4444',
-                  borderWidth: 1.5,
-                  borderDash: [4, 4],
-                  label: { content: '基準 0.10m', display: true, position: 'end',
-                           color: '#ef4444', backgroundColor: 'transparent', font: { size: 10 } }
-                }
-              }
-            }
-          }
+          scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, min: 0 } }
         }
       });
 

@@ -445,7 +445,7 @@
             spanGaps: true
           }]
         },
-        options: { ...chartDefaults }
+        options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, min: 0 } } }
       });
 
       if (rainChart) rainChart.destroy();

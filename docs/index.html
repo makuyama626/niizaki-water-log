@@ -181,6 +181,13 @@
     .forecast-temp .lo { color: #60a5fa; font-weight: 600; }
     .forecast-pop { font-size: 11px; color: #60a5fa; margin-top: 4px; }
 
+    .forecast-grid-week {
+      grid-template-columns: repeat(7, minmax(64px, 1fr));
+      min-width: 480px;
+    }
+    .forecast-grid-week .forecast-icon { font-size: 20px; }
+    .forecast-grid-week .forecast-desc { font-size: 9px; }
+
     /* レーダー */
     .radar-wrap {
       position: relative;
@@ -280,6 +287,14 @@
       <div class="chart-card">
         <div class="chart-title">☀️ 湯河原の天気予報（神奈川県西部）</div>
         <div id="forecast-content">
+          <div style="color:#64748b;font-size:13px">読み込み中...</div>
+        </div>
+      </div>
+
+      <!-- 週間天気予報 -->
+      <div class="chart-card">
+        <div class="chart-title">📅 週間天気予報（神奈川県／横浜の気温）</div>
+        <div id="forecast-week-content" style="overflow-x:auto">
           <div style="color:#64748b;font-size:13px">読み込み中...</div>
         </div>
       </div>
@@ -639,6 +654,34 @@
       return '🌡️';
     }
 
+    // 気象庁 天気コード → 簡易テキスト（週間予報はコードのみで提供されるため）
+    const JMA_CODE_TEXT = {
+      '100': '晴れ', '101': '晴れ時々曇', '110': '晴れ後時々曇', '111': '晴れ後曇',
+      '112': '晴れ後雨', '113': '晴れ後雨', '114': '晴れ後雨', '119': '晴れ後雷雨',
+      '120': '晴れ朝夕雨', '121': '晴れ朝雨', '122': '晴れ夕方雨', '123': '晴れ山雷雨',
+      '125': '晴れ昼雷雨', '126': '晴れ昼から雨', '130': '晴れ朝霧', '140': '晴れ時々雷雨',
+      '160': '晴れ一時雪', '170': '晴れ時々雪',
+      '200': '曇り', '201': '曇り時々晴', '202': '曇り一時雨', '203': '曇り時々雨',
+      '204': '曇り一時雪', '205': '曇り時々雪', '209': '霧',
+      '210': '曇り後時々晴', '211': '曇り後晴', '212': '曇り後雨', '213': '曇り後雨',
+      '214': '曇り後雨', '215': '曇り後雪', '216': '曇り後雪', '218': '曇り後雪',
+      '219': '曇り後雷雨', '224': '曇り昼から雨', '225': '曇り夕方から雨', '226': '曇り夜雨',
+      '228': '曇り昼から雪', '231': '曇り霧',
+      '300': '雨', '301': '雨時々晴', '302': '雨時々止む', '303': '雨時々雪',
+      '306': '大雨', '308': '暴風雨', '311': '雨後晴', '313': '雨後曇',
+      '314': '雨後雪', '320': '朝雨後晴', '321': '朝雨後曇', '323': '雨昼から晴',
+      '324': '雨夕方から晴', '325': '雨夜は晴', '328': '激しい雨', '350': '雷雨',
+      '400': '雪', '401': '雪時々晴', '402': '雪時々止む', '403': '雪時々雨',
+      '405': '大雪', '406': '風雪強し', '411': '雪後晴', '413': '雪後曇',
+      '414': '雪後雨', '425': '激しい雪', '450': '雷雪',
+    };
+
+    function jmaCodeText(code) {
+      if (JMA_CODE_TEXT[code]) return JMA_CODE_TEXT[code];
+      const first = code?.[0];
+      return first === '1' ? '晴れ' : first === '2' ? '曇り' : first === '3' ? '雨' : first === '4' ? '雪' : '--';
+    }
+
     async function loadForecast() {
       try {
         const res = await fetch(JMA_URL);
@@ -677,9 +720,39 @@
         }
         html += '</div>';
         document.getElementById('forecast-content').innerHTML = html;
+
+        // 週間予報（data[1]: 神奈川県全体・代表地点横浜の気温）
+        const weekly = data[1];
+        const wDates = weekly.timeSeries[0].timeDefines;
+        const wCodes = weekly.timeSeries[0].areas[0].weatherCodes;
+        const wPops  = weekly.timeSeries[0].areas[0].pops;
+        const wLo    = weekly.timeSeries[1].areas[0].tempsMin;
+        const wHi    = weekly.timeSeries[1].areas[0].tempsMax;
+
+        let wHtml = '<div class="forecast-grid forecast-grid-week">';
+        for (let i = 0; i < wDates.length; i++) {
+          const d = new Date(wDates[i]);
+          const label = `${d.getMonth()+1}/${d.getDate()}`;
+          const wd = ['日','月','火','水','木','金','土'][d.getDay()];
+          const text = jmaCodeText(wCodes[i]);
+          const pop = wPops[i] || '--';
+          const hi = wHi[i] || '--';
+          const lo = wLo[i] || '--';
+          wHtml += `
+            <div class="forecast-day">
+              <div class="forecast-date">${label}(${wd})</div>
+              <div class="forecast-icon">${weatherIcon(text)}</div>
+              <div class="forecast-desc">${text}</div>
+              <div class="forecast-temp"><span class="hi">${hi}°</span> / <span class="lo">${lo}°</span></div>
+              <div class="forecast-pop">☂ ${pop}%</div>
+            </div>`;
+        }
+        wHtml += '</div>';
+        document.getElementById('forecast-week-content').innerHTML = wHtml;
       } catch(e) {
         document.getElementById('forecast-content').innerHTML =
           `<div style="color:#64748b;font-size:12px">予報取得エラー: ${e.message}</div>`;
+        document.getElementById('forecast-week-content').innerHTML = '';
       }
     }
 

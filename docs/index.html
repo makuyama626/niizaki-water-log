@@ -408,6 +408,16 @@
       const levelLabels = filtered.map(r => formatTimeTwoLine(r.timestamp));
       const levels = filtered.map(r => r.level_m !== '' ? parseFloat(r.level_m) : null);
 
+      // 水位グラフ専用: 期間に応じてx軸の目盛り間隔を変える
+      // 24h→3時間ごと / 3日間→6時間ごと / 1週間→毎日0時
+      const levelTickInterval = currentPeriodHours <= 24 ? 3 : currentPeriodHours <= 72 ? 6 : 24;
+      function levelTickFilter(t) {
+        const ts = filtered[t.value]?.timestamp;
+        if (!ts) return false;
+        const d = new Date(ts);
+        return d.getMinutes() === 0 && d.getHours() % levelTickInterval === 0;
+      }
+
       // 10分雨量（南郷山）
       const rainVals = filtered.map(r => {
         const v = r['南郷山_10分mm'];
@@ -466,7 +476,15 @@
         },
         options: {
           ...chartDefaults,
-          scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, min: 0 } }
+          scales: {
+            ...chartDefaults.scales,
+            x: {
+              ...chartDefaults.scales.x,
+              ticks: { ...chartDefaults.scales.x.ticks, maxTicksLimit: undefined, autoSkip: false },
+              afterBuildTicks: axis => { axis.ticks = axis.ticks.filter(levelTickFilter); }
+            },
+            y: { ...chartDefaults.scales.y, min: 0 }
+          }
         }
       });
 

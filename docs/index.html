@@ -340,7 +340,7 @@
 
     // x軸目盛り用: [日付, 時刻] の2行配列を返す（Chart.jsは配列ラベルを複数行表示する）
     function formatTimeTwoLineFromDate(d) {
-      return [`${d.getMonth()+1}/${d.getDate()}`, `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`];
+      return [`${d.getMonth()+1}/${d.getDate()}`, `${d.getHours()}時`];
     }
     function formatTimeTwoLine(isoStr) {
       return formatTimeTwoLineFromDate(new Date(isoStr));

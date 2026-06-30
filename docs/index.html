@@ -338,6 +338,12 @@
       return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     }
 
+    // x軸目盛り用: [日付, 時刻] の2行配列を返す（Chart.jsは配列ラベルを複数行表示する）
+    function formatTimeTwoLine(isoStr) {
+      const d = new Date(isoStr);
+      return [`${d.getMonth()+1}/${d.getDate()}`, `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`];
+    }
+
     function getStatusColor(level) {
       if (level >= 1.5) return '#f87171';  // 警戒
       if (level >= 0.8) return '#fbbf24';  // 注意
@@ -399,6 +405,7 @@
     function updateCharts(data) {
       const filtered = filterByHours(data, currentPeriodHours);
       const labels = filtered.map(r => formatTime(r.timestamp));
+      const levelLabels = filtered.map(r => formatTimeTwoLine(r.timestamp));
       const levels = filtered.map(r => r.level_m !== '' ? parseFloat(r.level_m) : null);
 
       // 10分雨量（南郷山）
@@ -433,7 +440,7 @@
       levelChart = new Chart(document.getElementById('levelChart'), {
         type: 'line',
         data: {
-          labels,
+          labels: levelLabels,
           datasets: [
             {
               data: levels,

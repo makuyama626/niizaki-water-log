@@ -339,9 +339,39 @@
     }
 
     // x軸目盛り用: [日付, 時刻] の2行配列を返す（Chart.jsは配列ラベルを複数行表示する）
-    function formatTimeTwoLine(isoStr) {
-      const d = new Date(isoStr);
+    function formatTimeTwoLineFromDate(d) {
       return [`${d.getMonth()+1}/${d.getDate()}`, `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`];
+    }
+    function formatTimeTwoLine(isoStr) {
+      return formatTimeTwoLineFromDate(new Date(isoStr));
+    }
+
+    // 期間に応じた正時の目盛り候補（例: 3時間ごとなら 0,3,6,9,12,15,18,21時）を
+    // データの実際の範囲内で生成する
+    function buildTickTargets(timestamps, intervalHours) {
+      if (timestamps.length === 0) return [];
+      const start = new Date(timestamps[0]);
+      const end = new Date(timestamps[timestamps.length - 1]);
+      let cur = new Date(start);
+      cur.setMinutes(0, 0, 0);
+      cur.setHours(Math.floor(cur.getHours() / intervalHours) * intervalHours);
+      if (cur < start) cur = new Date(cur.getTime() + intervalHours * 3600 * 1000);
+      const targets = [];
+      while (cur <= end) {
+        targets.push(new Date(cur));
+        cur = new Date(cur.getTime() + intervalHours * 3600 * 1000);
+      }
+      return targets;
+    }
+
+    // targetの時刻に最も近いデータのインデックスを返す
+    function nearestIndex(timestamps, targetMs) {
+      let bestIdx = 0, bestDiff = Infinity;
+      for (let i = 0; i < timestamps.length; i++) {
+        const diff = Math.abs(new Date(timestamps[i]).getTime() - targetMs);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+      return bestIdx;
     }
 
     function getStatusColor(level) {
@@ -410,12 +440,16 @@
 
       // 水位グラフ専用: 期間に応じてx軸の目盛り間隔を変える
       // 24h→3時間ごと / 3日間→6時間ごと / 1週間→毎日0時
+      // データが正時ちょうどでなくても、最も近いデータ点に正時ラベルを表示する
       const levelTickInterval = currentPeriodHours <= 24 ? 3 : currentPeriodHours <= 72 ? 6 : 24;
-      function levelTickFilter(t) {
-        const ts = filtered[t.value]?.timestamp;
-        if (!ts) return false;
-        const d = new Date(ts);
-        return d.getMinutes() === 0 && d.getHours() % levelTickInterval === 0;
+      const rawTimestamps = filtered.map(r => r.timestamp);
+      const tickTargets = buildTickTargets(rawTimestamps, levelTickInterval);
+      const levelTickMap = new Map();
+      tickTargets.forEach(t => levelTickMap.set(nearestIndex(rawTimestamps, t.getTime()), t));
+      function buildLevelTicks() {
+        return Array.from(levelTickMap.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([idx, date]) => ({ value: idx, label: formatTimeTwoLineFromDate(date) }));
       }
 
       // 10分雨量（南郷山）
@@ -481,7 +515,7 @@
             x: {
               ...chartDefaults.scales.x,
               ticks: { ...chartDefaults.scales.x.ticks, maxTicksLimit: undefined, autoSkip: false },
-              afterBuildTicks: axis => { axis.ticks = axis.ticks.filter(levelTickFilter); }
+              afterBuildTicks: axis => { axis.ticks = buildLevelTicks(); }
             },
             y: { ...chartDefaults.scales.y, min: 0 }
           }

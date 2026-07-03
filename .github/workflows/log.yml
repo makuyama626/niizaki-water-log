@@ -28,6 +28,9 @@ jobs:
         run: pip install requests beautifulsoup4
 
       - name: Fetch and log water level
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: python niizaki_logger.py
 
       - name: Commit if changed

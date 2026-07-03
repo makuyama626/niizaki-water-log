@@ -22,10 +22,13 @@
 """
 
 import csv
+import json
 import os
 import re
+import smtplib
 import sys
 from datetime import datetime, timedelta, timezone, date
+from email.mime.text import MIMEText
 
 JST = timezone(timedelta(hours=9), name="JST")
 BASE = "https://www.pref.kanagawa.jp/sys/suibou/web_general/suibou_joho/html"
@@ -50,9 +53,14 @@ COMBINED_CSV = os.path.join(DATA_DIR, "combined_10min.csv")
 EVENT_CSV = os.path.join(DATA_DIR, "event_log.csv")
 
 # イベント検出パラメータ
-EVENT_START_THRESHOLD = 0.15   # この水位を超えたらイベント開始(m)
+EVENT_START_THRESHOLD = 0.10   # この水位を超えたらイベント開始(m)
 NORMAL_THRESHOLD = 0.10        # この水位以下が3コマ連続で「回復」と判定(m)
 NORMAL_CONSECUTIVE = 3         # 回復判定に必要な連続コマ数
+
+# メール通知パラメータ
+NOTIFY_THRESHOLD = 0.10                     # この水位を跨いだら通知(m)
+NOTIFY_TO = "makuyama626@gmail.com"
+NOTIFY_STATE_FILE = os.path.join(DATA_DIR, "notify_state.json")
 
 EVENT_FIELDS = [
     "event_id",          # YYYYMMDD_HHMM (イベント開始時刻)
@@ -260,6 +268,57 @@ def build_combined(water_rows, rain_rows):
     return fields
 
 
+def send_email(subject, body):
+    gmail_addr = os.environ.get("GMAIL_ADDRESS")
+    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
+    if not gmail_addr or not gmail_pass:
+        print("[warn] GMAIL_ADDRESS/GMAIL_APP_PASSWORD 未設定のためメール送信をスキップ", file=sys.stderr)
+        return
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = gmail_addr
+    msg["To"] = NOTIFY_TO
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(gmail_addr, gmail_pass)
+        server.sendmail(gmail_addr, [NOTIFY_TO], msg.as_string())
+    print(f"通知メール送信: {subject}")
+
+
+def check_and_notify(water_rows):
+    """最新水位が0.10mを跨いだら（超えた/下回った）メール通知する。"""
+    ok_rows = [r for r in water_rows.values() if r.get("status") == "ok" and r.get("level_m")]
+    if not ok_rows:
+        return
+    ok_rows.sort(key=lambda r: r["timestamp"])
+    latest = ok_rows[-1]
+    level = float(latest["level_m"])
+    current_state = "above" if level > NOTIFY_THRESHOLD else "below"
+
+    last_state = None
+    if os.path.exists(NOTIFY_STATE_FILE):
+        with open(NOTIFY_STATE_FILE, encoding="utf-8") as f:
+            last_state = json.load(f).get("last_state")
+
+    if last_state is not None and last_state != current_state:
+        if current_state == "above":
+            subject = f"【新崎川】水位が{NOTIFY_THRESHOLD:.2f}mを超えました（{level:.2f}m）"
+        else:
+            subject = f"【新崎川】水位が{NOTIFY_THRESHOLD:.2f}mを下回りました（{level:.2f}m）"
+        body = (
+            f"新崎橋（新崎川）の水位: {level:.2f}m\n"
+            f"観測時刻: {latest['timestamp']}\n\n"
+            f"https://makuyama626.github.io/niizaki-water-log/"
+        )
+        try:
+            send_email(subject, body)
+        except Exception as e:
+            print(f"[error] メール送信失敗: {e}", file=sys.stderr)
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(NOTIFY_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"last_state": current_state, "last_ts": latest["timestamp"]}, f, ensure_ascii=False)
+
+
 def update_event_log():
     """combined_10min.csv を読み込み、イベントを検出して event_log.csv を更新する。"""
     if not os.path.exists(COMBINED_CSV):
@@ -418,6 +477,7 @@ def run():
     save_csv(RAIN_CSV, RAIN_FIELDS, rain, lambda r: (r["timestamp"], r["station"]))
     build_combined(water, rain)
     update_event_log()
+    check_and_notify(water)
     print(f"[{now.isoformat()}] " + " | ".join(summary))
     print(f"累計 水位{len(water)}行 / 雨量{len(rain)}行")
 

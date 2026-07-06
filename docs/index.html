@@ -203,6 +203,39 @@
       width: 100%; height: 100%;
       border: none;
     }
+
+    /* 催行判断パネル */
+    .gonogo-card {
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid #334155;
+      background: #1e293b;
+    }
+    .gonogo-verdict {
+      font-size: 22px;
+      font-weight: 700;
+      text-align: center;
+      padding: 10px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+    .verdict-go    { background: rgba(52,211,153,0.15); color: #34d399; }
+    .verdict-watch { background: rgba(251,191,36,0.15); color: #fbbf24; }
+    .verdict-stop  { background: rgba(248,113,113,0.15); color: #f87171; }
+    .gonogo-checks { font-size: 13px; }
+    .gonogo-check-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 6px 0;
+      border-bottom: 1px solid #0f172a;
+      gap: 8px;
+    }
+    .gonogo-check-row:last-child { border-bottom: none; }
+    .gonogo-check-label { color: #94a3b8; flex-shrink: 0; }
+    .gonogo-check-result { text-align: right; font-weight: 600; }
+    .gonogo-note { font-size: 10px; color: #64748b; margin-top: 8px; text-align: center; }
   </style>
 </head>
 <body>
@@ -221,6 +254,13 @@
       データを取得中...
     </div>
     <div id="main-content" style="display:none">
+
+      <!-- 催行判断パネル -->
+      <div class="gonogo-card" id="gonogo-card">
+        <div class="gonogo-verdict" id="gonogo-verdict">⏳ 判定中...</div>
+        <div class="gonogo-checks" id="gonogo-checks"></div>
+        <div class="gonogo-note">※最終判断は現地（幕山橋の指標石）で行うこと（マニュアル第4版 4-0）</div>
+      </div>
 
       <!-- ステータスカード -->
       <div class="status-grid">
@@ -619,6 +659,7 @@
 
         updateCards(allData);
         updateCharts(allData);
+        updateGoNoGo(allData);
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('main-content').style.display = 'block';
@@ -754,6 +795,112 @@
           `<div style="color:#64748b;font-size:12px">予報取得エラー: ${e.message}</div>`;
         document.getElementById('forecast-week-content').innerHTML = '';
       }
+    }
+
+    // ===== 催行判断（マニュアル第4版準拠の自動判定） =====
+    const WARNING_URL = 'https://www.jma.go.jp/bosai/warning/data/warning/140000.json';
+    const YUGAWARA_CODE = '1438400';
+    const WARN_NAMES = {
+      '02':'暴風雪警報','03':'大雨警報','04':'洪水警報','05':'暴風警報',
+      '06':'大雪警報','07':'波浪警報','08':'高潮警報',
+      '10':'大雨注意報','12':'大雪注意報','13':'風雪注意報','14':'雷注意報',
+      '15':'強風注意報','16':'波浪注意報','18':'洪水注意報','19':'高潮注意報',
+      '20':'濃霧注意報','21':'乾燥注意報','23':'低温注意報',
+      '32':'暴風特別警報','33':'大雨特別警報','35':'大雨危険警報','36':'洪水危険警報'
+    };
+    const WARN_LEVEL3 = new Set(['02','03','04','05','06','07','08','32','33','35','36']);
+
+    async function loadWarnings() {
+      try {
+        const res = await fetch(WARNING_URL + '?t=' + Date.now());
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const warnings = [], advisories = [];
+        for (const at of data.areaTypes ?? []) {
+          for (const a of at.areas ?? []) {
+            if (a.code !== YUGAWARA_CODE) continue;
+            for (const w of a.warnings ?? []) {
+              if (!w.code || w.status === '解除' || w.status === '発表警報・注意報はなし') continue;
+              const name = WARN_NAMES[w.code] ?? `コード${w.code}`;
+              (WARN_LEVEL3.has(w.code) ? warnings : advisories).push(name);
+            }
+          }
+        }
+        return { warnings, advisories, ok: true };
+      } catch (e) {
+        return { warnings: [], advisories: [], ok: false, error: e.message };
+      }
+    }
+
+    function dailyRainTotal(data, col, dayStr) {
+      return data
+        .filter(r => r.timestamp.startsWith(dayStr) && r[col] !== '')
+        .reduce((s, r) => s + parseFloat(r[col]), 0);
+    }
+
+    async function updateGoNoGo(data) {
+      const checksEl = document.getElementById('gonogo-checks');
+      const verdictEl = document.getElementById('gonogo-verdict');
+      const checks = [];
+      let verdict = 'go';  // go → watch → stop の順に格上げ
+
+      // ① 湯河原町の警報・注意報
+      const w = await loadWarnings();
+      if (!w.ok) {
+        checks.push(['① 警報・注意報', '取得失敗（気象庁HPで手動確認）', '#fbbf24']);
+        verdict = 'watch';
+      } else if (w.warnings.length > 0) {
+        checks.push(['① 警報・注意報', `${w.warnings.join('・')} 発表中`, '#f87171']);
+        verdict = 'stop';
+      } else if (w.advisories.length > 0) {
+        checks.push(['① 警報・注意報', `${w.advisories.join('・')}（レベル2）`, '#fbbf24']);
+        if (verdict === 'go') verdict = 'watch';
+      } else {
+        checks.push(['① 警報・注意報', '発表なし', '#34d399']);
+      }
+
+      // ② 新崎橋 水位（10cm自主基準）
+      const withLevel = data.filter(r => r.level_m !== '');
+      if (withLevel.length > 0) {
+        const latest = withLevel[withLevel.length - 1];
+        const level = parseFloat(latest.level_m);
+        if (level > 0.10) {
+          // 回復見込み: (現在cm - 10) ÷ 0.15cm/時（無降雨前提の実測減水率）
+          const etaH = Math.round((level * 100 - 10) / 0.15);
+          const etaDate = new Date(Date.now() + etaH * 3600 * 1000);
+          const etaStr = etaH >= 48
+            ? `約${Math.round(etaH/24)}日後（${etaDate.getMonth()+1}/${etaDate.getDate()}頃）`
+            : `約${etaH}時間後`;
+          checks.push(['② 新崎橋 水位', `${level.toFixed(2)}m — 基準超過。回復見込み ${etaStr}※無降雨前提`, '#f87171']);
+          verdict = 'stop';
+        } else {
+          checks.push(['② 新崎橋 水位', `${level.toFixed(2)}m — 基準内（0.10m以下）`, '#34d399']);
+        }
+      }
+
+      // ③ 南郷山の雨量（前日15mm以上は翌日見送りの目安）
+      const today = new Date();
+      const yest = new Date(Date.now() - 24 * 3600 * 1000);
+      const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const rainToday = dailyRainTotal(data, '南郷山_10分mm', fmt(today));
+      const rainYest = dailyRainTotal(data, '南郷山_10分mm', fmt(yest));
+      if (rainYest >= 15 || rainToday >= 15) {
+        checks.push(['③ 南郷山 雨量', `前日${rainYest.toFixed(0)}mm／当日${rainToday.toFixed(0)}mm — 15mm基準超過、水位急変に注意`, '#fbbf24']);
+        if (verdict === 'go') verdict = 'watch';
+      } else {
+        checks.push(['③ 南郷山 雨量', `前日${rainYest.toFixed(0)}mm／当日${rainToday.toFixed(0)}mm — 問題なし`, '#34d399']);
+      }
+
+      // 表示
+      checksEl.innerHTML = checks.map(([label, result, color]) =>
+        `<div class="gonogo-check-row"><span class="gonogo-check-label">${label}</span><span class="gonogo-check-result" style="color:${color}">${result}</span></div>`
+      ).join('');
+
+      verdictEl.className = 'gonogo-verdict verdict-' + verdict;
+      verdictEl.textContent =
+        verdict === 'go'    ? '🟢 実施可（現地の指標石で最終確認）' :
+        verdict === 'watch' ? '🟡 要監視（催行可・30分間隔で監視強化）' :
+                              '🔴 中止（基準超過）';
     }
 
     // 30分ごとに自動更新

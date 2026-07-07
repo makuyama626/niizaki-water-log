@@ -236,6 +236,38 @@
     .gonogo-check-label { color: #94a3b8; flex-shrink: 0; }
     .gonogo-check-result { text-align: right; font-weight: 600; }
     .gonogo-note { font-size: 10px; color: #64748b; margin-top: 8px; text-align: center; }
+
+    /* 判断基準値 */
+    .criteria-box { margin-top: 12px; }
+    .criteria-box summary {
+      font-size: 12px;
+      color: #94a3b8;
+      cursor: pointer;
+      padding: 6px 0;
+      user-select: none;
+    }
+    .criteria-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .criteria-table th {
+      text-align: left;
+      color: #cbd5e1;
+      background: #0f172a;
+      padding: 6px 8px;
+      font-size: 11px;
+    }
+    .criteria-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid #0f172a;
+      color: #94a3b8;
+    }
+    .criteria-table td:last-child { text-align: right; }
+    .c-go    { color: #34d399 !important; font-weight: 600; }
+    .c-watch { color: #fbbf24 !important; font-weight: 600; }
+    .c-stop  { color: #f87171 !important; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -259,6 +291,24 @@
       <div class="gonogo-card" id="gonogo-card">
         <div class="gonogo-verdict" id="gonogo-verdict">⏳ 判定中...</div>
         <div class="gonogo-checks" id="gonogo-checks"></div>
+        <details class="criteria-box">
+          <summary>📏 判断基準値（タップで開閉）</summary>
+          <table class="criteria-table">
+            <tr><th colspan="2">① 警報・注意報（湯河原町）</th></tr>
+            <tr><td>警報（レベル3以上）</td><td class="c-stop">中止</td></tr>
+            <tr><td>注意報（レベル2）</td><td class="c-watch">催行可・要監視</td></tr>
+            <tr><th colspan="2">② 新崎橋 水位（自主基準）</th></tr>
+            <tr><td>0.10m（10cm）以下</td><td class="c-go">実施可</td></tr>
+            <tr><td>0.10m 超</td><td class="c-stop">中止</td></tr>
+            <tr><th colspan="2">③ 南郷山 雨量</th></tr>
+            <tr><td>日雨量 15mm 以上</td><td class="c-watch">翌日は原則見送り（実測：15mmで水位10cm超）</td></tr>
+            <tr><td>日雨量 40mm 以上の予報</td><td class="c-stop">中止を検討</td></tr>
+            <tr><th colspan="2">参考：回復時間の目安（実測）</th></tr>
+            <tr><td>総雨量25mm以下の増水</td><td>ピークから1〜3時間で回復</td></tr>
+            <tr><td>総雨量70mm超の増水</td><td>回復まで3日以上（300mm級は約2週間）</td></tr>
+            <tr><td>雨→水位上昇の到達時間</td><td>10〜20分（上流に雨雲接近で撤退開始）</td></tr>
+          </table>
+        </details>
         <div class="gonogo-note">※最終判断は現地（幕山橋の指標石）で行うこと（マニュアル第4版 4-0）</div>
       </div>
 

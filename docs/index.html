@@ -226,16 +226,22 @@
     .verdict-stop  { background: rgba(248,113,113,0.15); color: #f87171; }
     .gonogo-checks { font-size: 13px; }
     .gonogo-check-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
       padding: 6px 0;
       border-bottom: 1px solid #0f172a;
-      gap: 8px;
     }
     .gonogo-check-row:last-child { border-bottom: none; }
-    .gonogo-check-label { color: #94a3b8; flex-shrink: 0; }
-    .gonogo-check-result { text-align: right; font-weight: 600; }
+    .gonogo-check-label {
+      display: block;
+      color: #64748b;
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    .gonogo-check-result {
+      display: block;
+      font-weight: 600;
+      font-size: 13px;
+      line-height: 1.4;
+    }
     .gonogo-note { font-size: 10px; color: #64748b; margin-top: 8px; text-align: center; }
 
     /* 判断基準値 */
@@ -930,12 +936,12 @@
           const etaH = Math.round((level * 100 - thCm) / 0.15);
           const etaDate = new Date(Date.now() + etaH * 3600 * 1000);
           const etaStr = etaH >= 48
-            ? `約${Math.round(etaH/24)}日後（${etaDate.getMonth()+1}/${etaDate.getDate()}頃）`
+            ? `${etaDate.getMonth()+1}/${etaDate.getDate()}頃`
             : `約${etaH}時間後`;
-          checks.push([`② 水位（${c.name}）`, `${level.toFixed(2)}m — 基準${thCm}cm超過。回復見込み ${etaStr}※無降雨前提`, '#f87171']);
+          checks.push([`② 水位 ${c.name}（基準${thCm}cm）`, `${level.toFixed(2)}m 超過 ／ 回復見込み ${etaStr}（無降雨時）`, '#f87171']);
           courseVerdicts[c.id] = 'stop';
         } else {
-          checks.push([`② 水位（${c.name}）`, `${level.toFixed(2)}m — 基準内（${thCm}cm以下）`, '#34d399']);
+          checks.push([`② 水位 ${c.name}（基準${thCm}cm）`, `${level.toFixed(2)}m 基準内`, '#34d399']);
           courseVerdicts[c.id] = 'go';
         }
       }
@@ -947,10 +953,10 @@
       const rainToday = dailyRainTotal(data, '南郷山_10分mm', fmt(today));
       const rainYest = dailyRainTotal(data, '南郷山_10分mm', fmt(yest));
       if (rainYest >= 15 || rainToday >= 15) {
-        checks.push(['③ 南郷山 雨量', `前日${rainYest.toFixed(0)}mm／当日${rainToday.toFixed(0)}mm — 15mm基準超過、水位急変に注意`, '#fbbf24']);
+        checks.push(['③ 南郷山 雨量（基準15mm/日）', `前日${rainYest.toFixed(0)}mm ／ 当日${rainToday.toFixed(0)}mm 超過・水位急変に注意`, '#fbbf24']);
         if (commonVerdict === 'go') commonVerdict = 'watch';
       } else {
-        checks.push(['③ 南郷山 雨量', `前日${rainYest.toFixed(0)}mm／当日${rainToday.toFixed(0)}mm — 問題なし`, '#34d399']);
+        checks.push(['③ 南郷山 雨量（基準15mm/日）', `前日${rainYest.toFixed(0)}mm ／ 当日${rainToday.toFixed(0)}mm 問題なし`, '#34d399']);
       }
 
       // 表示

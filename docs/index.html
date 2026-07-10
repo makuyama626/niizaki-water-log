@@ -951,7 +951,7 @@
           const etaStr = etaH >= 48
             ? `${etaDate.getMonth()+1}/${etaDate.getDate()}頃`
             : `約${etaH}時間後`;
-          checks.push([`② 水位 ${c.name}（基準${thCm}cm）`, `${level.toFixed(2)}m 超過 ／ 回復見込み ${etaStr}（無降雨時）`, '#f87171']);
+          checks.push([`② 水位 ${c.name}（基準${thCm}cm）`, `現在${level.toFixed(2)}m ／ 基準${c.threshold.toFixed(2)}m超過 ／ 回復見込み ${etaStr}（無降雨時）`, '#f87171']);
           courseVerdicts[c.id] = 'stop';
         } else {
           checks.push([`② 水位 ${c.name}（基準${thCm}cm）`, `${level.toFixed(2)}m 基準内`, '#34d399']);

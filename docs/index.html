@@ -229,6 +229,17 @@
       flex-shrink: 0;
     }
     #gonogo-verdicts { margin-bottom: 6px; }
+    .gonogo-level {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 4px 4px 12px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #334155;
+    }
+    .gonogo-level .gl-label { font-size: 12px; color: #94a3b8; }
+    .gonogo-level .gl-value { font-size: 26px; font-weight: 700; color: #34d399; }
+    .gonogo-level .gl-time { font-size: 11px; color: #64748b; margin-left: auto; }
     .verdict-go    { background: rgba(52,211,153,0.15); color: #34d399; }
     .verdict-watch { background: rgba(251,191,36,0.15); color: #fbbf24; }
     .verdict-stop  { background: rgba(248,113,113,0.15); color: #f87171; }
@@ -304,6 +315,11 @@
 
       <!-- 催行判断パネル -->
       <div class="gonogo-card" id="gonogo-card">
+        <div class="gonogo-level" id="gonogo-level">
+          <span class="gl-label">現在水位</span>
+          <span class="gl-value" id="gl-value">--</span>
+          <span class="gl-time" id="gl-time">--</span>
+        </div>
         <div id="gonogo-verdicts">
           <div class="gonogo-verdict" id="gonogo-verdict-up"><span class="gv-course">上流コース（基本）</span><span class="gv-badge">⏳ 判定中</span></div>
           <div class="gonogo-verdict" id="gonogo-verdict-down"><span class="gv-course">下流コース（プール終点）</span><span class="gv-badge">⏳ 判定中</span></div>
@@ -332,16 +348,7 @@
 
       <!-- ステータスカード -->
       <div class="status-grid">
-        <div class="card">
-          <div class="card-label">現在水位</div>
-          <div>
-            <span class="card-value" id="val-level">--</span>
-            <span class="card-unit">m</span>
-            <span class="card-trend" id="val-trend"></span>
-          </div>
-          <div class="card-sub" id="val-time">--</div>
-        </div>
-        <div class="card">
+        <div class="card full">
           <div class="card-label">雨量</div>
           <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:13px">
             <thead>
@@ -509,18 +516,6 @@
     }
 
     function updateCards(data) {
-      // 最新の水位
-      const withLevel = data.filter(r => r.level_m !== '');
-      if (withLevel.length > 0) {
-        const latest = withLevel[withLevel.length - 1];
-        const level = parseFloat(latest.level_m);
-        const el = document.getElementById('val-level');
-        el.textContent = level.toFixed(2);
-        el.className = 'card-value';
-        el.style.color = getStatusColor(level);
-        document.getElementById('val-time').textContent = formatTime(latest.timestamp);
-      }
-
       // 24時間雨量（過去24h合計）をカードに表示
       const rainCols = ['南郷山_10分mm', '白銀山_10分mm', '浅間山_10分mm'];
       const stations = ['南郷山', '白銀山', '浅間山'];
@@ -935,6 +930,16 @@
       // ② 新崎橋 水位（コース別基準）
       const withLevel = data.filter(r => r.level_m !== '');
       const level = withLevel.length > 0 ? parseFloat(withLevel[withLevel.length - 1].level_m) : null;
+
+      // パネル最上部の現在水位（1行）
+      if (level !== null) {
+        const latestLv = withLevel[withLevel.length - 1];
+        const glVal = document.getElementById('gl-value');
+        glVal.textContent = `${level.toFixed(2)} m`;
+        glVal.style.color = getStatusColor(level);
+        document.getElementById('gl-time').textContent = formatTime(latestLv.timestamp);
+      }
+
       const courseVerdicts = {};
       for (const c of COURSES) {
         if (level === null) { courseVerdicts[c.id] = 'watch'; continue; }

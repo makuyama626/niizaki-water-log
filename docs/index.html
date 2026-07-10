@@ -940,18 +940,45 @@
         document.getElementById('gl-time').textContent = formatTime(latestLv.timestamp);
       }
 
+      // 回復見込みの前提を実データから判定
+      // (a) 直近60分の降雨（南郷山・白銀山いずれか）→ 降雨中は算出保留
+      // (b) 直近6時間の実測水位から減水ペース(cm/時)を算出 → それで外挿
+      const latestTs = withLevel.length > 0
+        ? new Date(withLevel[withLevel.length - 1].timestamp).getTime() : Date.now();
+      const rain60 = data
+        .filter(r => latestTs - new Date(r.timestamp).getTime() <= 60 * 60 * 1000)
+        .reduce((s, r) => s
+          + (r['南郷山_10分mm'] !== '' ? parseFloat(r['南郷山_10分mm']) : 0)
+          + (r['白銀山_10分mm'] !== '' ? parseFloat(r['白銀山_10分mm']) : 0), 0);
+      const isRaining = rain60 > 0;
+
+      let recessionRate = null;  // cm/時（正=減水中）
+      const recent = withLevel.filter(r => latestTs - new Date(r.timestamp).getTime() <= 6 * 3600 * 1000);
+      if (recent.length >= 2) {
+        const v0 = parseFloat(recent[0].level_m);
+        const v1 = parseFloat(recent[recent.length - 1].level_m);
+        const hrs = (new Date(recent[recent.length - 1].timestamp) - new Date(recent[0].timestamp)) / 3600000;
+        if (hrs >= 2) recessionRate = (v0 - v1) * 100 / hrs;
+      }
+
+      function etaText(thCm) {
+        if (isRaining) return '降雨中のため算出保留';
+        if (recessionRate === null) return 'データ不足で算出不可';
+        if (recessionRate < 0.03) return '減水停滞中（算出不可）';
+        const etaH = Math.round((level * 100 - thCm) / recessionRate);
+        const etaDate = new Date(latestTs + etaH * 3600 * 1000);
+        const when = etaH >= 48
+          ? `${etaDate.getMonth()+1}/${etaDate.getDate()}頃`
+          : `約${etaH}時間後`;
+        return `${when}（直近ペース${recessionRate.toFixed(2)}cm/時）`;
+      }
+
       const courseVerdicts = {};
       for (const c of COURSES) {
         if (level === null) { courseVerdicts[c.id] = 'watch'; continue; }
         const thCm = c.threshold * 100;
         if (level > c.threshold) {
-          // 回復見込み: (現在cm - 基準cm) ÷ 0.15cm/時（無降雨前提の実測減水率）
-          const etaH = Math.round((level * 100 - thCm) / 0.15);
-          const etaDate = new Date(Date.now() + etaH * 3600 * 1000);
-          const etaStr = etaH >= 48
-            ? `${etaDate.getMonth()+1}/${etaDate.getDate()}頃`
-            : `約${etaH}時間後`;
-          checks.push([`② 水位 ${c.name}（基準${thCm}cm）`, `基準${c.threshold.toFixed(2)}mを超過 ／ 回復見込み ${etaStr}（無降雨時）`, '#f87171']);
+          checks.push([`② 水位 ${c.name}（基準${thCm}cm）`, `基準${c.threshold.toFixed(2)}mを超過 ／ 回復見込み ${etaText(thCm)}`, '#f87171']);
           courseVerdicts[c.id] = 'stop';
         } else {
           checks.push([`② 水位 ${c.name}（基準${thCm}cm）`, `${level.toFixed(2)}m 基準内`, '#34d399']);

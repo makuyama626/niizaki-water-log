@@ -213,13 +213,14 @@
       background: #1e293b;
     }
     .gonogo-verdict {
-      font-size: 22px;
+      font-size: 16px;
       font-weight: 700;
       text-align: center;
       padding: 10px;
       border-radius: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
+    #gonogo-verdicts { margin-bottom: 6px; }
     .verdict-go    { background: rgba(52,211,153,0.15); color: #34d399; }
     .verdict-watch { background: rgba(251,191,36,0.15); color: #fbbf24; }
     .verdict-stop  { background: rgba(248,113,113,0.15); color: #f87171; }
@@ -289,7 +290,10 @@
 
       <!-- 催行判断パネル -->
       <div class="gonogo-card" id="gonogo-card">
-        <div class="gonogo-verdict" id="gonogo-verdict">⏳ 判定中...</div>
+        <div id="gonogo-verdicts">
+          <div class="gonogo-verdict" id="gonogo-verdict-up">⏳ 上流コース 判定中...</div>
+          <div class="gonogo-verdict" id="gonogo-verdict-down">⏳ 下流コース 判定中...</div>
+        </div>
         <div class="gonogo-checks" id="gonogo-checks"></div>
         <details class="criteria-box">
           <summary>📏 判断基準値（タップで開閉）</summary>
@@ -297,9 +301,9 @@
             <tr><th colspan="2">① 警報・注意報（湯河原町）</th></tr>
             <tr><td>警報（レベル3以上）</td><td class="c-stop">中止</td></tr>
             <tr><td>注意報（レベル2）</td><td class="c-watch">催行可・要監視</td></tr>
-            <tr><th colspan="2">② 新崎橋 水位（自主基準）</th></tr>
-            <tr><td>0.10m（10cm）以下</td><td class="c-go">実施可</td></tr>
-            <tr><td>0.10m 超</td><td class="c-stop">中止</td></tr>
+            <tr><th colspan="2">② 新崎橋 水位（コース別自主基準）</th></tr>
+            <tr><td>上流コース（基本）</td><td><span class="c-go">10cm以下で実施可</span>／<span class="c-stop">超は中止</span></td></tr>
+            <tr><td>下流コース（プール終点）</td><td><span class="c-go">17cm以下で実施可</span>／<span class="c-stop">超は中止</span></td></tr>
             <tr><th colspan="2">③ 南郷山 雨量</th></tr>
             <tr><td>日雨量 15mm 以上</td><td class="c-watch">翌日は原則見送り（実測：15mmで水位10cm超）</td></tr>
             <tr><td>日雨量 40mm 以上の予報</td><td class="c-stop">中止を検討</td></tr>
@@ -888,47 +892,55 @@
         .reduce((s, r) => s + parseFloat(r[col]), 0);
     }
 
+    // コース定義：判断水位（m）
+    const COURSES = [
+      { id: 'up',   name: '上流コース（基本）',       threshold: 0.10 },
+      { id: 'down', name: '下流コース（プール終点）', threshold: 0.17 },
+    ];
+
     async function updateGoNoGo(data) {
       const checksEl = document.getElementById('gonogo-checks');
-      const verdictEl = document.getElementById('gonogo-verdict');
       const checks = [];
-      let verdict = 'go';  // go → watch → stop の順に格上げ
+      let commonVerdict = 'go';  // 警報・雨量による共通判定（go → watch → stop）
 
-      // ① 湯河原町の警報・注意報
+      // ① 湯河原町の警報・注意報（全コース共通）
       const w = await loadWarnings();
       if (!w.ok) {
         checks.push(['① 警報・注意報', '取得失敗（気象庁HPで手動確認）', '#fbbf24']);
-        verdict = 'watch';
+        commonVerdict = 'watch';
       } else if (w.warnings.length > 0) {
         checks.push(['① 警報・注意報', `${w.warnings.join('・')} 発表中`, '#f87171']);
-        verdict = 'stop';
+        commonVerdict = 'stop';
       } else if (w.advisories.length > 0) {
         checks.push(['① 警報・注意報', `${w.advisories.join('・')}（レベル2）`, '#fbbf24']);
-        if (verdict === 'go') verdict = 'watch';
+        commonVerdict = 'watch';
       } else {
         checks.push(['① 警報・注意報', '発表なし', '#34d399']);
       }
 
-      // ② 新崎橋 水位（10cm自主基準）
+      // ② 新崎橋 水位（コース別基準）
       const withLevel = data.filter(r => r.level_m !== '');
-      if (withLevel.length > 0) {
-        const latest = withLevel[withLevel.length - 1];
-        const level = parseFloat(latest.level_m);
-        if (level > 0.10) {
-          // 回復見込み: (現在cm - 10) ÷ 0.15cm/時（無降雨前提の実測減水率）
-          const etaH = Math.round((level * 100 - 10) / 0.15);
+      const level = withLevel.length > 0 ? parseFloat(withLevel[withLevel.length - 1].level_m) : null;
+      const courseVerdicts = {};
+      for (const c of COURSES) {
+        if (level === null) { courseVerdicts[c.id] = 'watch'; continue; }
+        const thCm = c.threshold * 100;
+        if (level > c.threshold) {
+          // 回復見込み: (現在cm - 基準cm) ÷ 0.15cm/時（無降雨前提の実測減水率）
+          const etaH = Math.round((level * 100 - thCm) / 0.15);
           const etaDate = new Date(Date.now() + etaH * 3600 * 1000);
           const etaStr = etaH >= 48
             ? `約${Math.round(etaH/24)}日後（${etaDate.getMonth()+1}/${etaDate.getDate()}頃）`
             : `約${etaH}時間後`;
-          checks.push(['② 新崎橋 水位', `${level.toFixed(2)}m — 基準超過。回復見込み ${etaStr}※無降雨前提`, '#f87171']);
-          verdict = 'stop';
+          checks.push([`② 水位（${c.name}）`, `${level.toFixed(2)}m — 基準${thCm}cm超過。回復見込み ${etaStr}※無降雨前提`, '#f87171']);
+          courseVerdicts[c.id] = 'stop';
         } else {
-          checks.push(['② 新崎橋 水位', `${level.toFixed(2)}m — 基準内（0.10m以下）`, '#34d399']);
+          checks.push([`② 水位（${c.name}）`, `${level.toFixed(2)}m — 基準内（${thCm}cm以下）`, '#34d399']);
+          courseVerdicts[c.id] = 'go';
         }
       }
 
-      // ③ 南郷山の雨量（前日15mm以上は翌日見送りの目安）
+      // ③ 南郷山の雨量（全コース共通・前日15mm以上は翌日見送りの目安）
       const today = new Date();
       const yest = new Date(Date.now() - 24 * 3600 * 1000);
       const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -936,7 +948,7 @@
       const rainYest = dailyRainTotal(data, '南郷山_10分mm', fmt(yest));
       if (rainYest >= 15 || rainToday >= 15) {
         checks.push(['③ 南郷山 雨量', `前日${rainYest.toFixed(0)}mm／当日${rainToday.toFixed(0)}mm — 15mm基準超過、水位急変に注意`, '#fbbf24']);
-        if (verdict === 'go') verdict = 'watch';
+        if (commonVerdict === 'go') commonVerdict = 'watch';
       } else {
         checks.push(['③ 南郷山 雨量', `前日${rainYest.toFixed(0)}mm／当日${rainToday.toFixed(0)}mm — 問題なし`, '#34d399']);
       }
@@ -946,11 +958,17 @@
         `<div class="gonogo-check-row"><span class="gonogo-check-label">${label}</span><span class="gonogo-check-result" style="color:${color}">${result}</span></div>`
       ).join('');
 
-      verdictEl.className = 'gonogo-verdict verdict-' + verdict;
-      verdictEl.textContent =
-        verdict === 'go'    ? '🟢 実施可（現地の指標石で最終確認）' :
-        verdict === 'watch' ? '🟡 要監視（催行可・30分間隔で監視強化）' :
-                              '🔴 中止（基準超過）';
+      // コース別バナー（共通判定とコース別水位判定の悪い方を採用）
+      const rank = { go: 0, watch: 1, stop: 2 };
+      for (const c of COURSES) {
+        const v = rank[commonVerdict] > rank[courseVerdicts[c.id]] ? commonVerdict : courseVerdicts[c.id];
+        const el = document.getElementById('gonogo-verdict-' + c.id);
+        el.className = 'gonogo-verdict verdict-' + v;
+        el.textContent =
+          v === 'go'    ? `🟢 ${c.name}：実施可（現地で最終確認）` :
+          v === 'watch' ? `🟡 ${c.name}：要監視（催行可・監視強化）` :
+                          `🔴 ${c.name}：中止（基準超過）`;
+      }
     }
 
     // 30分ごとに自動更新

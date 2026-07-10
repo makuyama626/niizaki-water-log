@@ -213,12 +213,20 @@
       background: #1e293b;
     }
     .gonogo-verdict {
-      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
       font-weight: 700;
-      text-align: center;
-      padding: 10px;
+      padding: 10px 14px;
       border-radius: 12px;
       margin-bottom: 8px;
+    }
+    .gonogo-verdict .gv-course { font-size: 14px; }
+    .gonogo-verdict .gv-badge {
+      font-size: 15px;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     #gonogo-verdicts { margin-bottom: 6px; }
     .verdict-go    { background: rgba(52,211,153,0.15); color: #34d399; }
@@ -297,8 +305,8 @@
       <!-- 催行判断パネル -->
       <div class="gonogo-card" id="gonogo-card">
         <div id="gonogo-verdicts">
-          <div class="gonogo-verdict" id="gonogo-verdict-up">⏳ 上流コース 判定中...</div>
-          <div class="gonogo-verdict" id="gonogo-verdict-down">⏳ 下流コース 判定中...</div>
+          <div class="gonogo-verdict" id="gonogo-verdict-up"><span class="gv-course">上流コース（基本）</span><span class="gv-badge">⏳ 判定中</span></div>
+          <div class="gonogo-verdict" id="gonogo-verdict-down"><span class="gv-course">下流コース（プール終点）</span><span class="gv-badge">⏳ 判定中</span></div>
         </div>
         <div class="gonogo-checks" id="gonogo-checks"></div>
         <details class="criteria-box">
@@ -970,10 +978,11 @@
         const v = rank[commonVerdict] > rank[courseVerdicts[c.id]] ? commonVerdict : courseVerdicts[c.id];
         const el = document.getElementById('gonogo-verdict-' + c.id);
         el.className = 'gonogo-verdict verdict-' + v;
-        el.textContent =
-          v === 'go'    ? `🟢 ${c.name}：実施可（現地で最終確認）` :
-          v === 'watch' ? `🟡 ${c.name}：要監視（催行可・監視強化）` :
-                          `🔴 ${c.name}：中止（基準超過）`;
+        const badge =
+          v === 'go'    ? '🟢 実施可' :
+          v === 'watch' ? '🟡 要監視' :
+                          '🔴 中止';
+        el.innerHTML = `<span class="gv-course">${c.name}</span><span class="gv-badge">${badge}</span>`;
       }
     }
 

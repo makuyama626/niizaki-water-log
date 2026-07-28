@@ -53,12 +53,12 @@ COMBINED_CSV = os.path.join(DATA_DIR, "combined_10min.csv")
 EVENT_CSV = os.path.join(DATA_DIR, "event_log.csv")
 
 # イベント検出パラメータ
-EVENT_START_THRESHOLD = 0.10   # この水位を超えたらイベント開始(m)
-NORMAL_THRESHOLD = 0.10        # この水位以下が3コマ連続で「回復」と判定(m)
+EVENT_START_THRESHOLD = 0.10   # この水位を超えたらイベント開始(m)※平常水位0.07-0.08のノイズ誤検出を避けるため0.10のまま
+NORMAL_THRESHOLD = 0.08        # この水位以下が3コマ連続で「回復」と判定(m)＝上流コース催行基準と連動
 NORMAL_CONSECUTIVE = 3         # 回復判定に必要な連続コマ数
 
 # メール通知パラメータ
-NOTIFY_THRESHOLD = 0.10                     # この水位を跨いだら通知(m)
+NOTIFY_THRESHOLD = 0.08                     # この水位を跨いだら通知(m)＝上流コース催行基準と連動
 NOTIFY_TO = "makuyama626@gmail.com"
 NOTIFY_STATE_FILE = os.path.join(DATA_DIR, "notify_state.json")
 

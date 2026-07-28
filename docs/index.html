@@ -332,7 +332,7 @@
             <tr><td>警報（レベル3以上）</td><td class="c-stop">中止</td></tr>
             <tr><td>注意報（レベル2）</td><td class="c-watch">催行可・要監視</td></tr>
             <tr><th colspan="2">② 新崎橋 水位（コース別自主基準）</th></tr>
-            <tr><td>上流コース（基本）</td><td><span class="c-go">10cm以下で実施可</span>／<span class="c-stop">超は中止</span></td></tr>
+            <tr><td>上流コース（基本）</td><td><span class="c-go">8cm以下で実施可</span>／<span class="c-stop">超は中止</span></td></tr>
             <tr><td>下流コース（プール終点）</td><td><span class="c-go">17cm以下で実施可</span>／<span class="c-stop">超は中止</span></td></tr>
             <tr><th colspan="2">③ 南郷山 雨量</th></tr>
             <tr><td>日雨量 15mm 以上</td><td class="c-watch">翌日は原則見送り（実測：15mmで水位10cm超）</td></tr>
@@ -615,8 +615,8 @@
               spanGaps: true
             },
             {
-              label: '基準 0.10m',
-              data: labels.map(() => 0.10),
+              label: '基準 0.08m',
+              data: labels.map(() => 0.08),
               borderColor: '#ef4444',
               borderWidth: 1.5,
               borderDash: [6, 4],
@@ -903,7 +903,7 @@
 
     // コース定義：判断水位（m）
     const COURSES = [
-      { id: 'up',   name: '上流コース（基本）',       threshold: 0.10 },
+      { id: 'up',   name: '上流コース（基本）',       threshold: 0.08 },
       { id: 'down', name: '下流コース（プール終点）', threshold: 0.17 },
     ];
 

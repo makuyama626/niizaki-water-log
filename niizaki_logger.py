@@ -59,7 +59,7 @@ NORMAL_CONSECUTIVE = 3         # 回復判定に必要な連続コマ数
 
 # メール通知パラメータ
 NOTIFY_THRESHOLD = 0.08                     # この水位を跨いだら通知(m)＝上流コース催行基準と連動
-NOTIFY_TO = "makuyama626@gmail.com"
+NOTIFY_TO = os.environ.get("NOTIFY_TO", "")   # 未設定なら送信元アドレス宛に送る
 NOTIFY_STATE_FILE = os.path.join(DATA_DIR, "notify_state.json")
 
 EVENT_FIELDS = [
@@ -274,13 +274,14 @@ def send_email(subject, body):
     if not gmail_addr or not gmail_pass:
         print("[warn] GMAIL_ADDRESS/GMAIL_APP_PASSWORD 未設定のためメール送信をスキップ", file=sys.stderr)
         return
+    to_addr = NOTIFY_TO or gmail_addr
     msg = MIMEText(body)
     msg["Subject"] = subject
     msg["From"] = gmail_addr
-    msg["To"] = NOTIFY_TO
+    msg["To"] = to_addr
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(gmail_addr, gmail_pass)
-        server.sendmail(gmail_addr, [NOTIFY_TO], msg.as_string())
+        server.sendmail(gmail_addr, [to_addr], msg.as_string())
     print(f"通知メール送信: {subject}")
 
 

@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# ローカル開発用（マシン固有の絶対パスを含む）
+.claude/

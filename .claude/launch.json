@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "water-log",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8765"],
+      "port": 8765,
+      "cwd": "/Users/macmini/netautojob/niizaki-water-log/docs"
+    }
+  ]
+}

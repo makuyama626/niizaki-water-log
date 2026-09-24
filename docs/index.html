@@ -406,7 +406,7 @@
 
       <!-- 雨量グラフ -->
       <div class="chart-card">
-        <div class="chart-title">雨量（棒: 10分値 mm ／ 線: 時間雨量 mm/h）</div>
+        <div class="chart-title">時間雨量 (mm/h)</div>
         <div class="chart-wrap">
           <canvas id="rainChart"></canvas>
         </div>
@@ -591,12 +591,6 @@
           .map(([idx, date]) => ({ value: idx, label: formatTimeTwoLineFromDate(date) }));
       }
 
-      // 10分雨量（南郷山）
-      const rainVals = filtered.map(r => {
-        const v = r['南郷山_10分mm'];
-        return v !== '' ? parseFloat(v) : 0;
-      });
-
       // 時間雨量（積算）— filteredのインデックスでなくallData上で計算してからfilter
       const allHourly = calcHourlyRain(allData, '南郷山_10分mm');
       const hourlyMap = new Map(allData.map((r, i) => [r.timestamp, allHourly[i]]));
@@ -663,56 +657,35 @@
 
       if (rainChart) rainChart.destroy();
       rainChart = new Chart(document.getElementById('rainChart'), {
-        type: 'bar',
+        type: 'line',
         data: {
-          labels,
+          labels: levelLabels,
           datasets: [
             {
-              type: 'bar',
-              label: '10分雨量(mm)',
-              data: rainVals,
-              backgroundColor: 'rgba(96,165,250,0.5)',
-              borderRadius: 2,
-              yAxisID: 'y'
-            },
-            {
-              type: 'line',
               label: '時間雨量(mm/h)',
               data: hourlyVals,
               borderColor: '#f59e0b',
-              backgroundColor: 'transparent',
+              backgroundColor: 'rgba(245,158,11,0.1)',
               borderWidth: 2,
               pointRadius: 0,
               tension: 0.3,
               spanGaps: true,
-              yAxisID: 'y2'
+              fill: true
             }
           ]
         },
         options: {
           ...chartDefaults,
-          plugins: {
-            legend: {
-              display: true,
-              labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 14 }
-            },
-            tooltip: { mode: 'index', intersect: false }
-          },
           scales: {
+            ...chartDefaults.scales,
             x: {
-              ticks: { color: '#64748b', maxTicksLimit: 6, font: { size: 10 } },
-              grid: { color: '#1e293b' }
+              ...chartDefaults.scales.x,
+              ticks: { ...chartDefaults.scales.x.ticks, maxTicksLimit: undefined, autoSkip: false },
+              afterBuildTicks: axis => { axis.ticks = buildLevelTicks(); }
             },
             y: {
-              position: 'left',
-              ticks: { color: '#60a5fa', font: { size: 10 } },
-              grid: { color: '#1e293b' },
-              title: { display: true, text: 'mm', color: '#60a5fa', font: { size: 10 } }
-            },
-            y2: {
-              position: 'right',
-              ticks: { color: '#f59e0b', font: { size: 10 } },
-              grid: { drawOnChartArea: false },
+              ...chartDefaults.scales.y,
+              min: 0,
               title: { display: true, text: 'mm/h', color: '#f59e0b', font: { size: 10 } }
             }
           }
@@ -1016,7 +989,6 @@
         if (hrs < 2) return null;
         return (v0 - v1) * 100 / hrs;
       }
-      const rate24 = recessionRateFor(24);
       const rate12 = recessionRateFor(12);
 
       // 1つの窓ぶんの回復見込み文言（1行）
@@ -1031,10 +1003,10 @@
         return `${windowLabel}(${rate.toFixed(2)}cm/時)：${when}`;
       }
 
-      // 回復見込み（2段：直近24時間ペース／直近12時間ペース）
+      // 回復見込み（直近12時間の実測減水ペースで外挿）
       function etaText(thCm) {
         if (isRaining) return '降雨中のため算出保留';
-        return `${etaLine(rate24, '直近24h', thCm)}<br>${etaLine(rate12, '直近12h', thCm)}`;
+        return etaLine(rate12, '直近12h', thCm);
       }
 
       const thCm = GO_THRESHOLD * 100;
@@ -1044,7 +1016,7 @@
         checks.push([`② 水位（基準${thCm}cm）`, '水位データなし', '#fbbf24']);
       } else if (level > GO_THRESHOLD) {
         levelVerdict = 'stop';
-        checks.push([`② 水位（基準${thCm}cm）`, `基準${GO_THRESHOLD.toFixed(2)}mを超過<br>回復見込み<br>${etaText(thCm)}`, '#f87171']);
+        checks.push([`② 水位（基準${thCm}cm）`, `回復見込み<br>${etaText(thCm)}`, '#f87171']);
       } else {
         levelVerdict = 'go';
         checks.push([`② 水位（基準${thCm}cm）`, `${level.toFixed(2)}m 基準内`, '#34d399']);

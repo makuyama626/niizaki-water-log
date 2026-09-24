@@ -1010,6 +1010,20 @@
         return etaLine(rate12, '直近12h', thCm);
       }
 
+      // 前回、基準以下だった日時（＝最後に催行できた水位だったのはいつか）
+      function lastBelowText() {
+        for (let i = withLevel.length - 1; i >= 0; i--) {
+          if (parseFloat(withLevel[i].level_m) <= GO_THRESHOLD) {
+            const d = new Date(withLevel[i].timestamp);
+            const wd = ['日','月','火','水','木','金','土'][d.getDay()];
+            const days = Math.floor((latestTs - d.getTime()) / 86400000);
+            const ago = days >= 1 ? `${days}日前` : '本日';
+            return `${d.getMonth()+1}/${d.getDate()}(${wd}) ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}（${ago}）`;
+          }
+        }
+        return '記録期間内になし';
+      }
+
       const thCm = GO_THRESHOLD * 100;
       let levelVerdict;
       if (level === null) {
@@ -1017,7 +1031,10 @@
         checks.push([`② 水位（基準${thCm}cm）`, '水位データなし', '#fbbf24']);
       } else if (level > GO_THRESHOLD) {
         levelVerdict = 'stop';
-        checks.push([`② 水位（基準${thCm}cm）`, `回復見込み<br>${etaText(thCm)}`, '#f87171']);
+        checks.push([`② 水位（基準${thCm}cm）`,
+          `回復見込み<br>${etaText(thCm)}`
+          + `<br><span style="color:#94a3b8;font-weight:400">前回${thCm}cm以下：${lastBelowText()}</span>`,
+          '#f87171']);
       } else {
         levelVerdict = 'go';
         checks.push([`② 水位（基準${thCm}cm）`, `${level.toFixed(2)}m 基準内`, '#34d399']);

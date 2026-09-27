@@ -194,6 +194,26 @@
     .forecast-temp .lo { color: #60a5fa; font-weight: 600; }
     .forecast-pop { font-size: 11px; color: #60a5fa; margin-top: 4px; }
 
+    /* 出典表記 */
+    .src-note { font-size: 10px; color: #475569; margin-top: 8px; text-align: right; }
+
+    /* 明日の予報 */
+    .tm-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .tm-icon { font-size: 40px; line-height: 1; }
+    .tm-desc { font-size: 13px; color: #e2e8f0; line-height: 1.4; }
+    .tm-temp { font-size: 13px; margin-top: 4px; }
+    .tm-temp .hi { color: #f87171; font-weight: 700; }
+    .tm-temp .lo { color: #60a5fa; font-weight: 700; }
+    .tm-pops { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .tm-pop {
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 8px 4px;
+      text-align: center;
+    }
+    .tm-pop .tp-time { font-size: 10px; color: #64748b; margin-bottom: 3px; }
+    .tm-pop .tp-val { font-size: 15px; font-weight: 700; }
+
     .forecast-grid-week {
       grid-template-columns: repeat(7, minmax(64px, 1fr));
       min-width: 480px;
@@ -413,12 +433,21 @@
       </div>
 
 
+      <!-- 明日の予報（気象庁・神奈川県西部） -->
+      <div class="chart-card">
+        <div class="chart-title">🗓 明日の予報（神奈川県西部）</div>
+        <div id="tomorrow-content">
+          <div style="color:#64748b;font-size:13px">読み込み中...</div>
+        </div>
+      </div>
+
       <!-- 天気予報 -->
       <div class="chart-card">
         <div class="chart-title">☀️ 湯河原の天気予報（神奈川県西部）</div>
         <div id="forecast-content">
           <div style="color:#64748b;font-size:13px">読み込み中...</div>
         </div>
+        <div class="src-note">出典: 気象庁（横浜地方気象台） <span id="forecast-report"></span></div>
       </div>
 
       <!-- 週間天気予報 -->
@@ -427,6 +456,7 @@
         <div id="forecast-week-content" style="overflow-x:auto">
           <div style="color:#64748b;font-size:13px">読み込み中...</div>
         </div>
+        <div class="src-note">出典: 気象庁（横浜地方気象台）</div>
       </div>
 
       <!-- 雨雲レーダー -->
@@ -795,9 +825,29 @@
 
         const dates   = series[0].timeDefines;
         const weathers = series[0].areas[idx].weathers;
-        const pops    = series[1].areas[idx]?.pops ?? [];
-        const tempsHi = series[2]?.areas[idx]?.tempsMax ?? [];
-        const tempsLo = series[2]?.areas[idx]?.tempsMin ?? [];
+
+        // 降水確率：6時間ごとの時間帯（timeDefines と 1:1 で対応）
+        const popDefs = series[1]?.timeDefines ?? [];
+        const popIdx  = series[1]?.areas.findIndex(a => a.area.name.includes('西部'));
+        const pops    = series[1]?.areas[popIdx >= 0 ? popIdx : 0]?.pops ?? [];
+
+        // 気温：小田原（湯河原に最も近い地点）。data[0] では temps が [最低, 最高] で入る
+        const tmpArea = series[2]?.areas.find(a => a.area.name.includes('小田原'))
+                     ?? series[2]?.areas[0];
+        const tmpDefs = series[2]?.timeDefines ?? [];
+        const temps   = tmpArea?.temps ?? [];
+
+        // 日付が一致する気温だけを拾う
+        const tempsOf = (dateStr) => {
+          const vals = [];
+          tmpDefs.forEach((t, i) => { if (t.slice(0,10) === dateStr) vals.push(temps[i]); });
+          return vals;
+        };
+
+        // 発表時刻を表示（気象庁は5時・11時・17時に発表。常に最新版が配信される）
+        const rep = new Date(data[0].reportDatetime);
+        const repStr = `${rep.getMonth()+1}/${rep.getDate()} ${String(rep.getHours()).padStart(2,'0')}:${String(rep.getMinutes()).padStart(2,'0')}発表`;
+        document.getElementById('forecast-report').textContent = `／ ${repStr}`;
 
         const days = Math.min(3, dates.length);
         let html = '<div class="forecast-grid">';
@@ -805,9 +855,14 @@
           const d = new Date(dates[i]);
           const label = i === 0 ? '今日' : i === 1 ? '明日' : `${d.getMonth()+1}/${d.getDate()}`;
           const desc = weathers[i] ?? '';
-          const pop = pops[i*2] ?? pops[i] ?? '--';
-          const hi = tempsHi[i] ?? '--';
-          const lo = tempsLo[i] ?? '--';
+          const dayStr = dates[i].slice(0,10);
+          // その日の降水確率は最大値（最も降りやすい時間帯）を代表として出す
+          const dayPops = popDefs.map((t, k) => t.slice(0,10) === dayStr ? parseInt(pops[k]) : null)
+                                 .filter(v => v !== null && !isNaN(v));
+          const pop = dayPops.length ? Math.max(...dayPops) : '--';
+          const tv = tempsOf(dayStr);
+          const lo = tv.length ? tv[0] : '--';
+          const hi = tv.length > 1 ? tv[1] : '--';
           html += `
             <div class="forecast-day">
               <div class="forecast-date">${label}</div>
@@ -819,6 +874,45 @@
         }
         html += '</div>';
         document.getElementById('forecast-content').innerHTML = html;
+
+        // ── 明日の予報（時間帯別の降水確率つき）──
+        const tomorrow = new Date(Date.now() + 24*3600*1000);
+        const tmrStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
+        const tmrIdx = dates.findIndex(t => t.slice(0,10) === tmrStr);
+        const tmEl = document.getElementById('tomorrow-content');
+        if (tmrIdx < 0) {
+          tmEl.innerHTML = '<div style="color:#64748b;font-size:12px">明日の予報はまだ発表されていません</div>';
+        } else {
+          const desc = weathers[tmrIdx] ?? '';
+          const tv = tempsOf(tmrStr);
+          const lo = tv.length ? tv[0] : '--';
+          const hi = tv.length > 1 ? tv[1] : '--';
+          const wd = ['日','月','火','水','木','金','土'][tomorrow.getDay()];
+          const blocks = [['0-6時',0],['6-12時',6],['12-18時',12],['18-24時',18]];
+          let popHtml = '';
+          for (const [label, hour] of blocks) {
+            let v = '--';
+            popDefs.forEach((t, k) => {
+              const dt = new Date(t);
+              if (t.slice(0,10) === tmrStr && dt.getHours() === hour) v = pops[k];
+            });
+            const n = parseInt(v);
+            const color = isNaN(n) ? '#64748b' : n >= 50 ? '#f87171' : n >= 30 ? '#fbbf24' : '#34d399';
+            popHtml += `<div class="tm-pop"><div class="tp-time">${label}</div>`
+                     + `<div class="tp-val" style="color:${color}">${v}${isNaN(n) ? '' : '%'}</div></div>`;
+          }
+          tmEl.innerHTML =
+            `<div class="tm-head">
+               <div class="tm-icon">${weatherIcon(desc)}</div>
+               <div>
+                 <div class="tm-desc">${tomorrow.getMonth()+1}/${tomorrow.getDate()}(${wd})　${desc.replace(/　/g,' ')}</div>
+                 <div class="tm-temp">最高 <span class="hi">${hi}°</span> ／ 最低 <span class="lo">${lo}°</span><span style="color:#475569;font-size:11px">（小田原）</span></div>
+               </div>
+             </div>
+             <div style="font-size:11px;color:#64748b;margin-bottom:5px">降水確率</div>
+             <div class="tm-pops">${popHtml}</div>
+             <div class="src-note">出典: 気象庁（横浜地方気象台） ／ ${repStr}</div>`;
+        }
 
         // 週間予報（data[1]: 神奈川県全体・代表地点横浜の気温）
         const weekly = data[1];
@@ -852,6 +946,8 @@
         document.getElementById('forecast-content').innerHTML =
           `<div style="color:#64748b;font-size:12px">予報取得エラー: ${e.message}</div>`;
         document.getElementById('forecast-week-content').innerHTML = '';
+        document.getElementById('tomorrow-content').innerHTML =
+          `<div style="color:#64748b;font-size:12px">予報取得エラー: ${e.message}</div>`;
       }
     }
 
@@ -1050,7 +1146,7 @@
         checks.push(['③ 南郷山 雨量（基準15mm/日）', `前日${rainYest.toFixed(0)}mm ／ 当日${rainToday.toFixed(0)}mm 超過・水位急変に注意`, '#fbbf24']);
         if (commonVerdict === 'go') commonVerdict = 'watch';
       } else {
-        checks.push(['③ 南郷山 雨量（基準15mm/日）', `前日${rainYest.toFixed(0)}mm ／ 当日${rainToday.toFixed(0)}mm 問題なし`, '#34d399']);
+        checks.push(['③ 南郷山 雨量（基準15mm/日）', `前日${rainYest.toFixed(0)}mm ／ 当日${rainToday.toFixed(0)}mm`, '#34d399']);
       }
 
       // 表示
